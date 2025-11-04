@@ -5,19 +5,42 @@ All notable changes to ChittyCan will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.1] - 2025-01-04
+## [0.4.2] - 2025-01-04
 
-### Fixed
-- **Hook installation:** Fixed missing `zsh/snippets.zsh` file in npm package distribution
-  - Added `copy:assets` script to copy zsh files during build
-  - Hook installation (`can hook install zsh`) now works correctly
+### Added - 🎯 Smart Command System (Template-Based)
 
-### Changed
-- **Natural language integration:** Simplified chitty CLI integration
-  - Added explicit `can chitty <args>` command for natural language processing
-  - Unknown commands now suggest using `can chitty "command"` format
-  - Removed automatic delegation to avoid confusion
-  - Users must explicitly use `can chitty` for natural language commands
+**Template-Based Command Detection**
+- ✨ Declarative command pattern system in `command-templates.ts`
+- ✨ Data-driven command detection - add patterns without changing code
+- ✨ 8 built-in templates: Cloudflare, Database, SSH, MCP, GitHub, Notion, AI, Linear
+- ✨ Smart config awareness - checks for required remotes before execution
+- ✨ Interactive setup guidance - offers to configure missing remotes
+- ✨ CLI tool detection - checks for and offers to install required tools
+- ✨ Approval workflow - shows what ChittyCan will do before executing
+
+**New Command**
+- ✨ `can chitty <args>` - Pass-through to full chitty CLI with config awareness
+  - Detects what the command needs (remotes, CLI tools)
+  - Checks if you have it configured
+  - Guides you through setup if missing
+  - Shows what will happen before executing
+
+**Examples**
+```bash
+# Detects Cloudflare deployment, checks for wrangler and remote
+can chitty deploy bane
+
+# Detects database operation, checks for neon remote
+can chitty migrate production
+
+# Detects GitHub operation, checks for gh CLI and remote
+can chitty create a PR
+```
+
+**Architecture**
+- Template system makes command logic extensible
+- No hardcoded patterns - all patterns are data
+- Easy to add new command types without code changes
 
 ## [0.4.0] - 2024-11-04
 

@@ -2,7 +2,6 @@
 
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
-import chalk from "chalk";
 import { configMenu } from "./commands/config.js";
 import { open, listRemotes } from "./commands/open.js";
 import { nudgeNow, nudgeQuiet } from "./commands/nudge.js";
@@ -13,14 +12,40 @@ import { listExtensions, enableExtension, disableExtension, installExtension } f
 import { PluginLoader } from "./lib/plugin.js";
 import { doctor } from "./commands/doctor.js";
 import { briefCommand } from "./commands/brief.js";
-import { proxyToChitty } from "./lib/chitty-proxy.js";
+import { proxyToChitty, isSupportedCLI } from "./lib/chitty-proxy.js";
+import { smartChittyCommand } from "./lib/smart-chitty.js";
+import {
+  listMcpServers,
+  startMcpServer,
+  stopMcpServer,
+  mcpServerStatus,
+  listMcpTools,
+  testMcpConnection
+} from "./commands/mcp.js";
 
 // Load plugins early
 const config = (await import("./lib/config.js")).loadConfig();
 const pluginLoader = new PluginLoader(config);
 await pluginLoader.loadAll();
 
-yargs(hideBin(process.argv))
+// Check for unknown commands before yargs processes them
+const args = hideBin(process.argv);
+const knownCommands = ["config", "brief", "chitty", "remote", "open", "nudge", "checkpoint", "checkpoints", "hook", "ext", "doctor", "sync", "mcp"];
+const firstArg = args[0];
+
+// If first arg is a supported CLI (gh, docker, etc), always proxy to chitty for natural language interpretation
+if (firstArg && isSupportedCLI(firstArg)) {
+  proxyToChitty(args);
+  process.exit(0); // Won't reach here if proxyToChitty succeeds
+}
+
+// If first arg is a command (not a flag) and it's not known, proxy to chitty
+if (firstArg && !firstArg.startsWith("-") && !knownCommands.includes(firstArg)) {
+  proxyToChitty(args);
+  process.exit(0); // Won't reach here if proxyToChitty succeeds
+}
+
+yargs(args)
   .scriptName("can")
   .usage("$0 <command> [options]")
   .command(
@@ -37,6 +62,20 @@ yargs(hideBin(process.argv))
     () => {},
     async (argv) => {
       await briefCommand(argv);
+    }
+  )
+  .command(
+    "chitty [args..]",
+    "Pass-through to full chitty CLI with smart config awareness",
+    (yargs) =>
+      yargs.positional("args", {
+        describe: "Arguments to pass to chitty CLI",
+        type: "string",
+        array: true
+      }),
+    async (argv) => {
+      const args = (argv.args as string[]) || [];
+      await smartChittyCommand(args);
     }
   )
   .command(
@@ -229,20 +268,6 @@ yargs(hideBin(process.argv))
     }
   )
   .command(
-    "chitty [args..]",
-    "Pass-through to full chitty CLI (requires: npm install -g chitty)",
-    (yargs) =>
-      yargs.positional("args", {
-        describe: "Arguments to pass to chitty CLI",
-        type: "string",
-        array: true
-      }),
-    (argv) => {
-      const args = (argv.args as string[]) || [];
-      proxyToChitty(args);
-    }
-  )
-  .command(
     "sync",
     "Sync between Notion and GitHub",
     (yargs) =>
@@ -280,20 +305,95 @@ yargs(hideBin(process.argv))
       yargs.showHelp();
     }
   )
+  .command(
+    "mcp",
+    "Manage MCP (Model Context Protocol) servers",
+    (yargs) =>
+      yargs
+        .command(
+          "list",
+          "List configured MCP servers",
+          () => {},
+          () => {
+            listMcpServers();
+          }
+        )
+        .command(
+          "start <name>",
+          "Start an MCP server",
+          (yargs) =>
+            yargs.positional("name", {
+              describe: "MCP server name",
+              type: "string",
+              demandOption: true
+            }),
+          (argv) => {
+            startMcpServer(argv.name as string);
+          }
+        )
+        .command(
+          "stop <name>",
+          "Stop an MCP server",
+          (yargs) =>
+            yargs.positional("name", {
+              describe: "MCP server name",
+              type: "string",
+              demandOption: true
+            }),
+          (argv) => {
+            stopMcpServer(argv.name as string);
+          }
+        )
+        .command(
+          "status <name>",
+          "Check MCP server status",
+          (yargs) =>
+            yargs.positional("name", {
+              describe: "MCP server name",
+              type: "string",
+              demandOption: true
+            }),
+          (argv) => {
+            mcpServerStatus(argv.name as string);
+          }
+        )
+        .command(
+          "tools <name>",
+          "List tools from MCP server",
+          (yargs) =>
+            yargs.positional("name", {
+              describe: "MCP server name",
+              type: "string",
+              demandOption: true
+            }),
+          async (argv) => {
+            await listMcpTools(argv.name as string);
+          }
+        )
+        .command(
+          "test <name>",
+          "Test connection to MCP server",
+          (yargs) =>
+            yargs.positional("name", {
+              describe: "MCP server name",
+              type: "string",
+              demandOption: true
+            }),
+          async (argv) => {
+            await testMcpConnection(argv.name as string);
+          }
+        ),
+    () => {
+      yargs.showHelp();
+    }
+  )
   .fail((msg, err, yargs) => {
-    // If unknown command, suggest chitty
-    if (msg && msg.includes("Unknown command")) {
+    // Handle unknown arguments within known commands (e.g., "can sync gh")
+    if (msg && msg.includes("Unknown argument")) {
       const args = hideBin(process.argv);
-      const command = args.join(" ");
-      console.log();
-      console.error(chalk.red(`✗ Unknown command: ${command}`));
-      console.log();
-      console.log(chalk.yellow("💡 Tip: Try using the chitty command for natural language:"));
-      console.log(chalk.cyan(`   can chitty "${command}"`));
-      console.log();
-      console.log(chalk.dim("Or run 'can --help' to see available commands"));
-      console.log();
-      process.exit(1);
+      console.log(); // Add spacing
+      proxyToChitty(args);
+      return; // Exit handled by proxyToChitty
     }
     // For other errors, show help
     if (msg) console.error(msg);

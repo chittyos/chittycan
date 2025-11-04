@@ -93,8 +93,34 @@ export interface AiRemote {
   };
 }
 
+export interface ApiRemote {
+  type: "api" | "sdk";
+  name: string; // API/SDK name (e.g., "stripe", "twilio", "sendgrid")
+  baseUrl: string; // API base URL
+  apiKey?: string; // API key (optional - falls back to env var)
+  apiKeyHeader?: string; // Header name for API key (default: "Authorization")
+  apiKeyPrefix?: string; // Prefix for API key (e.g., "Bearer", "Token")
+  headers?: Record<string, string>; // Additional headers
+  description?: string;
+
+  // SDK configuration
+  sdk?: {
+    language: "typescript" | "python" | "go" | "rust" | "ruby" | "php";
+    package: string; // npm package, pip package, etc.
+    importPath?: string; // Import path in code
+    initCode?: string; // Code snippet to initialize SDK
+  };
+
+  // Documentation
+  docs?: {
+    url: string;
+    quickstart?: string;
+    reference?: string;
+  };
+}
+
 export interface Config {
-  remotes: Record<string, NotionRemote | GitHubRemote | RcloneRemote | McpRemote | CloudflareRemote | NeonRemote | SshRemote | AiRemote>;
+  remotes: Record<string, NotionRemote | GitHubRemote | RcloneRemote | McpRemote | CloudflareRemote | NeonRemote | SshRemote | AiRemote | ApiRemote>;
   nudges: {
     enabled: boolean;
     intervalMinutes: number;

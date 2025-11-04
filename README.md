@@ -119,6 +119,40 @@ See [tests/parity_py.py](tests/parity_py.py) and [tests/parity_node.js](tests/pa
 
 **Report compatibility issues:** Use the [Parity Failure](https://github.com/chittycorp/chittycan/issues/new?template=parity_failure.yml) issue template - we fix within 24 hours.
 
+## Natural Language Commands
+
+ChittyCan supports natural language for 14+ popular CLIs. Just tell it what you want in plain English (quotes optional):
+
+```bash
+# GitHub CLI
+can gh create a PR for my bug fix
+can gh list all my open issues
+can gh clone the repo chittyapps/chittycan
+
+# Docker
+can docker list all running containers
+can docker stop the nginx container
+can docker show logs for app container
+
+# Git
+can git commit all changes with message fixed auth
+can git create a new branch called feature/login
+
+# Kubernetes
+can kubectl get all pods in production namespace
+can kubectl scale my deployment to 3 replicas
+
+# Quotes work too (useful for preserving exact phrasing)
+can gh "create a PR titled 'Fix: auth bug'"
+can git "commit everything with message 'v2.0 release'"
+
+# And more: npm, aws, gcloud, az, terraform, helm, cargo, pip, yarn, pnpm
+```
+
+**How it works:** ChittyCan proxies natural language commands to the full [chitty CLI](https://github.com/chittyos/cli), which uses AI to interpret and execute the actual commands.
+
+**Note:** Natural language commands require the full `chitty` CLI. If not installed, ChittyCan shows upgrade instructions.
+
 ## Core Features
 
 ### 1. Project Tracking

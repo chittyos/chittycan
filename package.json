@@ -1,6 +1,6 @@
 {
   "name": "chittycan",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Your completely autonomous network for managing 80+ platforms from one command - Notion, GitHub, Cloudflare, Neon, Linear, and all ChittyOS services",
   "type": "module",
   "bin": {
