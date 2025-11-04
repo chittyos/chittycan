@@ -17,14 +17,14 @@
 import type { ChittyPlugin } from "@/lib/plugin";
 
 // Import all AI platform plugins
-import openaiPlugin from "./openai";
-import anthropicPlugin from "./anthropic";
-import ollamaPlugin from "./ollama";
-import groqPlugin from "./groq";
-import replicatePlugin from "./replicate";
-import togetherPlugin from "./together";
-import huggingfacePlugin from "./huggingface";
-import coherePlugin from "./cohere";
+import openaiPlugin from "./openai.js";
+import anthropicPlugin from "./anthropic.js";
+import ollamaPlugin from "./ollama.js";
+import groqPlugin from "./groq.js";
+import replicatePlugin from "./replicate.js";
+import togetherPlugin from "./together.js";
+import huggingfacePlugin from "./huggingface.js";
+import coherePlugin from "./cohere.js";
 
 // Export individual plugins
 export {

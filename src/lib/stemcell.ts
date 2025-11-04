@@ -327,7 +327,8 @@ function detectProjectType(projectPath: string): string {
   if (existsSync(join(projectPath, "package.json"))) {
     const pkg = JSON.parse(readFileSync(join(projectPath, "package.json"), "utf-8"));
     if (pkg.dependencies?.["@cloudflare/workers-types"]) return "cloudflare-worker";
-    if (pkg.dependencies?.["typescript"]) return "typescript";
+    if (pkg.dependencies?.["typescript"] || pkg.devDependencies?.["typescript"]) return "typescript";
+    if (existsSync(join(projectPath, "tsconfig.json"))) return "typescript";
     return "node.js";
   }
   if (existsSync(join(projectPath, "pyproject.toml"))) return "python";

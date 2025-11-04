@@ -12,11 +12,11 @@
 import type { ChittyPlugin } from "@/lib/plugin";
 
 // Import all ChittyOS plugins
-import chittyidPlugin from "./chittyid";
-import chittyauthPlugin from "./chittyauth";
-import chittyconnectPlugin from "./chittyconnect";
-import chittyregistryPlugin from "./chittyregistry";
-import chittyrouterPlugin from "./chittyrouter";
+import chittyidPlugin from "./chittyid.js";
+import chittyauthPlugin from "./chittyauth.js";
+import chittyconnectPlugin from "./chittyconnect.js";
+import chittyregistryPlugin from "./chittyregistry.js";
+import chittyrouterPlugin from "./chittyrouter.js";
 
 // Export individual plugins
 export { chittyidPlugin, chittyauthPlugin, chittyconnectPlugin, chittyregistryPlugin, chittyrouterPlugin };
