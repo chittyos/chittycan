@@ -1,0 +1,78 @@
+name: 💼 Commercial License Inquiry
+description: Request commercial licensing information
+title: "[Commercial]: "
+labels: ["commercial", "sales"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Interested in a commercial license? We'll get back to you within 24 hours.
+
+        **Or email directly:** licensing@chitty.cc
+
+  - type: input
+    id: company
+    attributes:
+      label: Company Name
+      placeholder: "Acme Corp"
+    validations:
+      required: true
+
+  - type: input
+    id: email
+    attributes:
+      label: Email
+      placeholder: "yourname@company.com"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: company-size
+    attributes:
+      label: Company Size
+      options:
+        - "1-10 employees"
+        - "11-50 employees"
+        - "51-200 employees"
+        - "201-500 employees"
+        - "500+ employees"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: use-case
+    attributes:
+      label: Primary Use Case
+      options:
+        - Self-host (private cloud/on-prem)
+        - SaaS (closed-source)
+        - Internal tools
+        - Multi-tenant platform
+        - Enterprise integration
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Requirements
+      description: What features do you need?
+      placeholder: |
+        - Self-host binary
+        - Custom routing rules
+        - SSO integration
+        - etc.
+
+  - type: input
+    id: timeline
+    attributes:
+      label: Timeline
+      description: When do you need this?
+      placeholder: "Next month, Q1 2025, etc."
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Information
+      description: Anything else we should know?

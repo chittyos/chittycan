@@ -1,0 +1,80 @@
+name: ✨ Feature Request
+description: Suggest a new feature or enhancement
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Help us understand your use case.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem are you trying to solve?
+      placeholder: "I'm frustrated when..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How would you like to solve this?
+      placeholder: "I'd like ChittyCan to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Have you tried any workarounds?
+      placeholder: "I tried X but..."
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this to you?
+      options:
+        - Critical (blocking my work)
+        - High (would make my life much easier)
+        - Medium (nice to have)
+        - Low (just an idea)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Gateway/Routing
+        - Caching
+        - Budget/Quotas
+        - Observability
+        - CLI/UX
+        - Documentation
+        - Integration
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: Describe your specific use case
+      placeholder: |
+        I'm building a SaaS platform with...
+
+  - type: checkboxes
+    id: willing-to-contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I'm willing to implement this feature
+        - label: I can help test this feature
+        - label: I can write documentation for this

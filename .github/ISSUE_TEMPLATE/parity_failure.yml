@@ -1,0 +1,86 @@
+name: ⚠️ OpenAI Parity Failure
+description: Report OpenAI API compatibility issue
+title: "[Parity]: "
+labels: ["parity-failure", "priority-high"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Critical:** Parity failures are high priority. We aim to fix within 24 hours.
+
+  - type: textarea
+    id: endpoint
+    attributes:
+      label: Affected Endpoint
+      description: Which OpenAI API endpoint is failing?
+      placeholder: "/v1/chat/completions"
+    validations:
+      required: true
+
+  - type: textarea
+    id: request
+    attributes:
+      label: Request
+      description: Your request to ChittyCan
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: chittycan-response
+    attributes:
+      label: ChittyCan Response
+      description: What ChittyCan returned
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: openai-response
+    attributes:
+      label: Expected OpenAI Response
+      description: What OpenAI returns directly
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: difference
+    attributes:
+      label: Difference
+      description: What's different?
+      placeholder: |
+        - Missing field: usage.total_tokens
+        - Wrong status code: 201 instead of 200
+        - etc.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: ChittyCan Version
+      placeholder: "0.4.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction Script
+      description: Minimal script to reproduce
+      render: python
+      placeholder: |
+        import openai
+        openai.api_base = "https://connect.chitty.cc/v1"
+        response = openai.ChatCompletion.create(...)
+        print(response)
+
+  - type: checkboxes
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - label: This breaks my production app
+        - label: This breaks my tests
+        - label: This is minor (cosmetic)

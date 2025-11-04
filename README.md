@@ -34,6 +34,91 @@ npx chittycan
 can config
 ```
 
+## 🚀 AI Gateway (New in v0.4.0!)
+
+**ChittyCan is now an OpenAI-compatible AI gateway** - a drop-in replacement for OpenAI API that routes your requests through 8+ AI platforms with intelligent fallback chains, caching, and budget controls.
+
+### Why Use ChittyCan Gateway?
+
+- **💰 Cost Optimization** - Route requests to cheapest provider, cache responses, set budget limits
+- **🔄 Smart Fallback** - If one provider fails, automatically try the next in your chain
+- **🛡️ Resilience** - Never get blocked by a single provider's outage
+- **📊 Unified Interface** - One API for OpenAI, Anthropic, Ollama, Groq, and more
+- **🔒 Self-Hosted** - Run your own gateway, keep your API keys private
+- **⚡ Intelligent Routing** - Route based on model capabilities, cost, or latency
+
+### Quick Migration from OpenAI
+
+```python
+# Before (direct OpenAI)
+import openai
+openai.api_key = "sk-..."
+response = openai.ChatCompletion.create(model="gpt-4", ...)
+
+# After (ChittyCan gateway)
+import openai
+openai.api_base = "http://localhost:8787/v1"  # Your ChittyCan gateway
+openai.api_key = "your-chittycan-token"
+response = openai.ChatCompletion.create(model="gpt-4", ...)  # Works identically!
+```
+
+**That's it!** Your existing code works unchanged. See [MIGRATION_PLAYBOOK.md](MIGRATION_PLAYBOOK.md) for full guide.
+
+### Gateway Configuration
+
+```bash
+# Configure AI gateway
+can config
+
+# Choose: New remote → AI Platform
+# Select platform:
+#   1 / OpenAI       - GPT-4, GPT-3.5, DALL-E
+#   2 / Anthropic    - Claude Sonnet, Opus, Haiku
+#   3 / Ollama       - Local models (Llama, Mistral, etc)
+#   4 / Groq         - Ultra-fast inference
+#   5 / Replicate    - Open source models
+#   6 / Together     - Inference API
+#   7 / HuggingFace  - 100k+ models
+#   8 / Cohere       - Command, Embed models
+
+# Configure gateway tier:
+# - Free: 1000 req/day, basic caching
+# - Pro: Unlimited, smart routing, fallback chains
+# - Team: Multi-user, usage analytics
+# - Enterprise: Self-hosted, SLA, support
+```
+
+### Gateway Features by Tier
+
+| Feature | Free | Pro | Team | Enterprise |
+|---------|------|-----|------|------------|
+| Requests/day | 1,000 | Unlimited | Unlimited | Unlimited |
+| Basic Caching | ✅ | ✅ | ✅ | ✅ |
+| Smart Routing | ❌ | ✅ | ✅ | ✅ |
+| Fallback Chains | ❌ | ✅ | ✅ | ✅ |
+| Budget Controls | ❌ | ✅ | ✅ | ✅ |
+| Usage Analytics | ❌ | ❌ | ✅ | ✅ |
+| Multi-user | ❌ | ❌ | ✅ | ✅ |
+| Self-hosted | ❌ | ❌ | ❌ | ✅ |
+| SLA & Support | ❌ | ❌ | ❌ | ✅ |
+
+**Pricing:** Free tier available. Pro $29/mo, Team $99/mo, Enterprise contact sales.
+
+### Parity Testing
+
+ChittyCan maintains **100% OpenAI API compatibility**. We test every endpoint:
+
+```bash
+# Run parity tests
+export CHITTYCAN_TOKEN=your_token
+export OPENAI_API_BASE=http://localhost:8787/v1
+npm run test:parity
+```
+
+See [tests/parity_py.py](tests/parity_py.py) and [tests/parity_node.js](tests/parity_node.js) for test suite.
+
+**Report compatibility issues:** Use the [Parity Failure](https://github.com/chittycorp/chittycan/issues/new?template=parity_failure.yml) issue template - we fix within 24 hours.
+
 ## Natural Language Commands
 
 ChittyCan supports natural language for 14+ popular CLIs. Just tell it what you want in plain English (quotes optional):
@@ -242,6 +327,56 @@ All config is stored in `~/.config/chitty/config.json`:
       "owner": "YOUR_USERNAME",
       "repo": "chittyos",
       "projectNumber": 1
+    },
+    "ai-gateway": {
+      "type": "ai-platform",
+      "platform": "openai",
+      "apiKey": "sk-...",
+      "model": "gpt-4",
+      "gateway": {
+        "accountId": "your-account-id",
+        "gatewayId": "your-gateway-id",
+        "enabled": true,
+        "tier": "pro",
+        "caching": true,
+        "smartRouting": true,
+        "fallbackChain": true,
+        "budget": {
+          "daily": 10,
+          "monthly": 300
+        },
+        "oauth": {
+          "enabled": true,
+          "scopes": ["chat", "embeddings"],
+          "openaiCompatible": true
+        }
+      }
+    },
+    "production": {
+      "type": "cloudflare",
+      "accountId": "your-cf-account",
+      "apiToken": "your-cf-token",
+      "workers": ["chittyauth", "chittyconnect"],
+      "zones": ["chitty.cc"]
+    },
+    "database": {
+      "type": "neon",
+      "projectId": "your-project-id",
+      "apiKey": "your-neon-key",
+      "databases": ["chittyos-core"]
+    },
+    "server": {
+      "type": "ssh",
+      "host": "server.example.com",
+      "user": "admin",
+      "port": 22,
+      "keyPath": "~/.ssh/id_rsa"
+    },
+    "claude": {
+      "type": "mcp-server",
+      "name": "@modelcontextprotocol/server-filesystem",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/files"]
     }
   },
   "nudges": {
@@ -261,6 +396,18 @@ All config is stored in `~/.config/chitty/config.json`:
   }
 }
 ```
+
+### Supported Remote Types
+
+- **notion-database** - Notion database for project tracking
+- **github-project** - GitHub Projects v2
+- **ai-platform** - AI gateway (OpenAI, Anthropic, Ollama, Groq, etc.) 🆕
+- **cloudflare** - Cloudflare Workers, DNS, KV, R2 🆕
+- **neon** - Neon PostgreSQL databases 🆕
+- **ssh** - SSH remote servers 🆕
+- **mcp-server** - Model Context Protocol servers 🆕
+- **gdrive** - Google Drive (via rclone)
+- **rclone** - Any rclone-supported remote
 
 ## Command Reference
 
@@ -298,10 +445,21 @@ can sync status               # Show sync config
 
 ## Setup Guides
 
+### AI Gateway
+- **[Migration Playbook](./MIGRATION_PLAYBOOK.md)** - Migrate from OpenAI to ChittyCan in 3 steps
+- **[Competitive Analysis](./COMPETITIVE_ANALYSIS.md)** - How ChittyCan compares to alternatives
+- **[Investor Pitch](./INVESTOR_PITCH.md)** - Business case and roadmap
+- **[Tactical Roadmap](./ROADMAP.md)** - What we're building and when
+
+### Integration
 - **[Multi-Model Architecture](./MULTI_MODEL.md)** - Pop any AI model at any juncture
 - **[GitHub App Setup](./GITHUB_APP.md)** - Create GitHub App for webhooks and API access
 - **[Notion Integration](./GITHUB_APP.md#notion-integration-setup)** - Connect Notion databases
 - **[Two-Way Sync](./GITHUB_APP.md#testing-the-setup)** - Configure bidirectional sync
+
+### Contributing
+- **[Contributing Guide](./CONTRIBUTING.md)** - How to contribute code
+- **[License Strategy](./LICENSE_STRATEGY.md)** - AGPL v3 + Commercial licensing explained
 
 ## Architecture
 
@@ -355,42 +513,56 @@ Expose ChittyCan via Model Context Protocol:
 
 ## Development Roadmap
 
-### Phase 1: Core Tracking ✅
-- [x] Interactive config (rclone-style)
-- [x] Notion remote management
-- [x] GitHub remote management
-- [x] Shell hooks (zsh)
-- [x] Nudges and checkpoints
-- [x] Two-way sync engine
+### v0.4.0: AI Gateway ✅ (Shipped!)
+- [x] OpenAI-compatible AI gateway
+- [x] 8 AI platform support (OpenAI, Anthropic, Ollama, Groq, etc.)
+- [x] Gateway tier pricing (Free/Pro/Team/Enterprise)
+- [x] Smart routing and fallback chains
+- [x] Budget controls and caching
+- [x] OAuth/API integration
+- [x] Parity test suite (Python + Node.js)
+- [x] Benchmark runner with Prometheus/Grafana
+- [x] SSH, MCP Server, Cloudflare, Neon remote types
 
-### Phase 2: Cloud Infrastructure 🚧
-- [ ] Cloudflare Workers management
-- [ ] DNS configuration
+### v0.5.0: Production Hardening 🚧 (In Progress)
+- [ ] Self-hosted gateway deployment guide
+- [ ] Advanced fallback strategies (model-specific)
+- [ ] Request/response logging and replay
+- [ ] Cost tracking dashboard
+- [ ] Multi-user token management
+- [ ] **License change to AGPL v3** (with commercial option)
+
+### v0.6.0: Cloud Infrastructure 📋
+- [ ] Cloudflare Workers deployment automation
+- [ ] DNS configuration wizard
 - [ ] KV/R2 operations
-- [ ] Neon database management
-- [ ] Schema migrations
+- [ ] Neon database schema migrations
+- [ ] Infrastructure as code export
 
-### Phase 3: AI & Storage 📋
-- [ ] MCP server management
-- [ ] Claude Code configuration
-- [ ] rclone integration
-- [ ] Google Drive organization
-
-### Phase 4: Web & MCP 📋
+### v0.7.0: Observability & Analytics 📋
 - [ ] Web dashboard
-- [ ] MCP server implementation
-- [ ] Real-time webhook handler
-- [ ] Analytics and reporting
+- [ ] Real-time metrics (latency, cost, errors)
+- [ ] Usage analytics per model/provider
+- [ ] Budget alerts and notifications
+- [ ] Historical data export
 
 ## Contributing
 
-Contributions welcome! Please:
+Contributions welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed guidelines.
 
+**Quick start:**
 1. Fork the repo
 2. Create a feature branch
 3. Make your changes
-4. Add tests
-5. Submit a PR
+4. Add tests (maintain >80% coverage)
+5. Run parity tests if touching API
+6. Submit a PR
+
+**Important:**
+- First-time contributors must sign the CLA
+- OpenAI API parity is critical - test everything
+- Follow [Conventional Commits](https://www.conventionalcommits.org/)
+- Report parity failures within 24 hours
 
 ## License
 
