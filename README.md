@@ -62,7 +62,7 @@ openai.api_key = "your-chittycan-token"
 response = openai.ChatCompletion.create(model="gpt-4", ...)  # Works identically!
 ```
 
-**That's it!** Your existing code works unchanged. See [MIGRATION_PLAYBOOK.md](MIGRATION_PLAYBOOK.md) for full guide.
+**That's it!** Your existing code works unchanged. See [MIGRATION_PLAYBOOK.md](docs/MIGRATION_PLAYBOOK.md) for full guide.
 
 ### Gateway Configuration
 
@@ -446,20 +446,27 @@ can sync status               # Show sync config
 ## Setup Guides
 
 ### AI Gateway
-- **[Migration Playbook](./MIGRATION_PLAYBOOK.md)** - Migrate from OpenAI to ChittyCan in 3 steps
-- **[Competitive Analysis](./COMPETITIVE_ANALYSIS.md)** - How ChittyCan compares to alternatives
-- **[Investor Pitch](./INVESTOR_PITCH.md)** - Business case and roadmap
-- **[Tactical Roadmap](./ROADMAP.md)** - What we're building and when
+- **[Migration Playbook](docs/MIGRATION_PLAYBOOK.md)** - Migrate from OpenAI to ChittyCan in 3 steps
+- **[Competitive Analysis](docs/COMPETITIVE_ANALYSIS.md)** - How ChittyCan compares to alternatives
+- **[Investor Pitch](docs/INVESTOR_PITCH.md)** - Business case and roadmap
+- **[Tactical Roadmap](ROADMAP.md)** - What we're building and when
 
 ### Integration
-- **[Multi-Model Architecture](./MULTI_MODEL.md)** - Pop any AI model at any juncture
-- **[GitHub App Setup](./GITHUB_APP.md)** - Create GitHub App for webhooks and API access
-- **[Notion Integration](./GITHUB_APP.md#notion-integration-setup)** - Connect Notion databases
-- **[Two-Way Sync](./GITHUB_APP.md#testing-the-setup)** - Configure bidirectional sync
+- **[Multi-Model Architecture](docs/MULTI_MODEL.md)** - Pop any AI model at any juncture
+- **[GitHub App Setup](docs/GITHUB_APP.md)** - Create GitHub App for webhooks and API access
+- **[ChittyOS Integration](docs/CHITTYOS_INTEGRATION.md)** - Connect to ChittyOS ecosystem
+- **[Extensions & Plugins](docs/EXTENSIONS.md)** - Extend ChittyCan functionality
+
+### Documentation
+- **[Quick Start Guide](docs/QUICKSTART.md)** - Get up and running in 5 minutes
+- **[OS Support](docs/OS_SUPPORT.md)** - Platform compatibility
+- **[Full Documentation](docs/)** - Complete documentation
 
 ### Contributing
-- **[Contributing Guide](./CONTRIBUTING.md)** - How to contribute code
-- **[License Strategy](./LICENSE_STRATEGY.md)** - AGPL v3 + Commercial licensing explained
+- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute code
+- **[License Strategy](LICENSE_STRATEGY.md)** - AGPL v3 + Commercial licensing explained
+- **[Code of Conduct](CODE_OF_CONDUCT.md)** - Community guidelines
+- **[Security Policy](SECURITY.md)** - Report vulnerabilities
 
 ## Architecture
 
