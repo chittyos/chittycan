@@ -557,7 +557,413 @@ chitty mixpanel users count
 
 ---
 
-### 13. Automation & Integration Platforms
+### 13. Personal Productivity & Calendar
+
+#### Apple Reminders
+```bash
+# Lists management
+chitty reminders lists
+chitty reminders list create "ChittyOS Tasks"
+chitty reminders list delete "Old List"
+
+# Reminders
+chitty reminders add "Deploy to production" \
+  --list "ChittyOS Tasks" \
+  --due tomorrow \
+  --priority high
+
+chitty reminders complete reminder-id
+chitty reminders search "deploy"
+chitty reminders today
+chitty reminders overdue
+
+# Sync with Notion
+chitty reminders sync notion tracker \
+  --list "ChittyOS Tasks" \
+  --bidirectional
+
+# Integration with checkpoints
+chitty checkpoint "Finished OAuth" --remind "Test OAuth" --due "2 days"
+```
+
+**Remote type:** `apple-reminders`
+```json
+{
+  "type": "apple-reminders",
+  "defaultList": "ChittyOS Tasks",
+  "syncToNotion": true,
+  "notionRemote": "tracker"
+}
+```
+
+#### Google Tasks
+```bash
+# Task lists
+chitty gtasks lists
+chitty gtasks list create "Work Projects"
+
+# Tasks
+chitty gtasks add "Review PR" --list "Work Projects" --due tomorrow
+chitty gtasks list --list "Work Projects"
+chitty gtasks complete task-id
+chitty gtasks move task-id --to "Completed"
+
+# Sync with other platforms
+chitty gtasks sync notion tracker
+chitty gtasks sync github-issues chittyos
+```
+
+**Remote type:** `google-tasks`
+
+#### Google Calendar
+```bash
+# Calendar management
+chitty gcal calendars list
+chitty gcal events list --calendar primary --next 7days
+
+# Events
+chitty gcal event create "Deploy Review" \
+  --calendar primary \
+  --start "2024-11-04 14:00" \
+  --duration 1h \
+  --attendees user@example.com
+
+chitty gcal event update event-id --start "2024-11-04 15:00"
+chitty gcal event delete event-id
+
+# Integration with deployments
+chitty gcal schedule-deploy \
+  --calendar "Deployments" \
+  --service chittyauth \
+  --time "2024-11-04 14:00"
+
+# Sync meetings to Notion
+chitty gcal sync notion tracker \
+  --calendar "Work" \
+  --tag "Meetings"
+```
+
+**Remote type:** `google-calendar`
+```json
+{
+  "type": "google-calendar",
+  "defaultCalendar": "primary",
+  "syncCalendars": ["Work", "Deployments"],
+  "notionRemote": "tracker"
+}
+```
+
+#### Google Home / Assistant
+```bash
+# Routines
+chitty ghome routines list
+chitty ghome routine create "Morning Standup" \
+  --trigger time:09:00 \
+  --actions "chitty nudge now, chitty sync run"
+
+# Voice commands
+chitty ghome command add "Update tracker" "chitty nudge now"
+chitty ghome command add "What's my status" "chitty checkpoints 5"
+
+# Smart home automation
+chitty ghome scene create "Work Mode" \
+  --actions "lights:desk:on, chitty open tracker"
+
+# Broadcast messages
+chitty ghome broadcast "Deployment starting in 5 minutes"
+```
+
+**Remote type:** `google-home`
+
+#### Microsoft 365 To Do
+```bash
+# Lists
+chitty mstodo lists
+chitty mstodo list create "ChittyOS Project"
+
+# Tasks
+chitty mstodo add "Update documentation" \
+  --list "ChittyOS Project" \
+  --due tomorrow \
+  --reminder "2024-11-04 09:00"
+
+chitty mstodo complete task-id
+chitty mstodo today
+chitty mstodo important
+
+# Sync with Microsoft Planner
+chitty mstodo sync planner "ChittyOS Board"
+
+# Sync with Notion
+chitty mstodo sync notion tracker --bidirectional
+```
+
+**Remote type:** `microsoft-todo`
+```json
+{
+  "type": "microsoft-todo",
+  "tenantId": "...",
+  "clientId": "...",
+  "defaultList": "ChittyOS Project",
+  "syncToNotion": true
+}
+```
+
+#### Microsoft 365 Calendar (Outlook)
+```bash
+# Calendars
+chitty outlook calendars list
+chitty outlook events list --calendar primary --next 7days
+
+# Events
+chitty outlook event create "Sprint Planning" \
+  --start "2024-11-04 10:00" \
+  --duration 2h \
+  --attendees team@example.com \
+  --teams-meeting  # Create Teams meeting
+
+chitty outlook event update event-id --reschedule "2024-11-04 14:00"
+
+# Sync to Notion
+chitty outlook sync notion tracker --calendar "Work"
+```
+
+**Remote type:** `microsoft-calendar`
+
+#### Microsoft Planner
+```bash
+# Plans & Buckets
+chitty planner plans list
+chitty planner buckets list --plan "ChittyOS"
+
+# Tasks
+chitty planner task create "Implement feature" \
+  --plan "ChittyOS" \
+  --bucket "In Progress" \
+  --assigned-to user@example.com
+
+chitty planner task move task-id --bucket "Done"
+
+# Sync with GitHub Projects
+chitty planner sync github chittyos
+chitty planner sync notion tracker
+```
+
+**Remote type:** `microsoft-planner`
+
+#### Todoist
+```bash
+# Projects & Tasks
+chitty todoist projects list
+chitty todoist project create "ChittyOS"
+
+chitty todoist add "Deploy to production" \
+  --project "ChittyOS" \
+  --due tomorrow \
+  --priority p1 \
+  --labels deploy,urgent
+
+chitty todoist complete task-id
+chitty todoist today
+chitty todoist upcoming --days 7
+
+# Sync with other platforms
+chitty todoist sync notion tracker
+chitty todoist sync github chittyos
+```
+
+**Remote type:** `todoist`
+
+#### Things 3 (macOS/iOS)
+```bash
+# Areas & Projects
+chitty things areas list
+chitty things projects list --area Work
+
+# Tasks
+chitty things add "Review documentation" \
+  --project "ChittyOS" \
+  --when tomorrow \
+  --deadline "2024-11-10" \
+  --tags important,docs
+
+chitty things today
+chitty things upcoming
+chitty things complete task-id
+
+# Sync to Notion
+chitty things sync notion tracker
+```
+
+**Remote type:** `things`
+
+#### TickTick
+```bash
+# Lists & Tasks
+chitty ticktick lists
+chitty ticktick add "Update dependencies" \
+  --list "Development" \
+  --due tomorrow \
+  --priority high \
+  --tags maintenance
+
+chitty ticktick today
+chitty ticktick habit track "Daily standup"
+
+# Pomodoro integration
+chitty ticktick pomodoro start "Code review" --duration 25
+
+# Sync
+chitty ticktick sync notion tracker
+```
+
+**Remote type:** `ticktick`
+
+#### Any.do
+```bash
+# Tasks & Lists
+chitty anydo lists
+chitty anydo add "Team meeting notes" \
+  --list "Work" \
+  --due today \
+  --reminder "14:30"
+
+chitty anydo today
+chitty anydo tomorrow
+
+# Sync
+chitty anydo sync notion tracker
+```
+
+**Remote type:** `anydo`
+
+#### OmniFocus (macOS/iOS)
+```bash
+# Projects & Contexts
+chitty omnifocus projects list
+chitty omnifocus contexts list
+
+# Tasks
+chitty omnifocus add "Write API documentation" \
+  --project "ChittyOS" \
+  --context "@computer" \
+  --due tomorrow \
+  --flag
+
+chitty omnifocus forecast
+chitty omnifocus flagged
+
+# Sync
+chitty omnifocus sync notion tracker
+```
+
+**Remote type:** `omnifocus`
+
+#### Habitica (Gamified)
+```bash
+# Tasks & Habits
+chitty habitica tasks list --type todos
+chitty habitica habit create "Daily code review" --difficulty medium
+
+chitty habitica complete task-id  # Earn XP!
+chitty habitica stats  # Character stats
+
+# Sync
+chitty habitica sync notion tracker --category todos
+```
+
+**Remote type:** `habitica`
+
+#### Trello
+```bash
+# Boards & Lists
+chitty trello boards list
+chitty trello lists --board "ChittyOS Project"
+
+# Cards
+chitty trello card create "Implement OAuth" \
+  --board "ChittyOS Project" \
+  --list "To Do" \
+  --due tomorrow \
+  --labels bug,urgent
+
+chitty trello card move card-id --list "In Progress"
+chitty trello card comment card-id "Started implementation"
+
+# Sync with GitHub
+chitty trello sync github chittyos
+chitty trello sync notion tracker
+```
+
+**Remote type:** `trello`
+
+#### Monday.com
+```bash
+# Boards & Items
+chitty monday boards list
+chitty monday items list --board "ChittyOS"
+
+# Create item
+chitty monday item create "Deploy v1.2" \
+  --board "ChittyOS" \
+  --group "In Progress" \
+  --person user@example.com \
+  --status "Working on it"
+
+# Sync
+chitty monday sync notion tracker
+```
+
+**Remote type:** `monday`
+
+#### ClickUp
+```bash
+# Spaces & Lists
+chitty clickup spaces list
+chitty clickup lists --space "Engineering"
+
+# Tasks
+chitty clickup task create "Fix authentication bug" \
+  --list "Bugs" \
+  --assignee user@example.com \
+  --priority urgent \
+  --due tomorrow
+
+chitty clickup task status task-id "in progress"
+
+# Time tracking
+chitty clickup time start task-id
+chitty clickup time stop
+
+# Sync
+chitty clickup sync notion tracker
+chitty clickup sync github chittyos
+```
+
+**Remote type:** `clickup`
+
+#### Airtable
+```bash
+# Bases & Tables
+chitty airtable bases list
+chitty airtable tables --base "Project Management"
+
+# Records
+chitty airtable record create "Tasks" \
+  --base "Project Management" \
+  --fields '{"Name":"Deploy","Status":"In Progress","Due":"2024-11-05"}'
+
+chitty airtable records list "Tasks" --view "Active"
+
+# Sync to Notion
+chitty airtable sync notion tracker --table "Tasks"
+```
+
+**Remote type:** `airtable`
+
+---
+
+### 14. Automation & Integration Platforms
 
 #### IFTTT
 ```bash
@@ -669,7 +1075,7 @@ chitty make template install "Notion Project Tracker"
 
 ---
 
-### 14. macOS Automation
+### 15. macOS Automation
 
 #### Mac Automator
 ```bash

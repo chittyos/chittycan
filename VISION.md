@@ -179,13 +179,50 @@ A **unified CLI** with:
 # One command to start your day
 chitty morning
 
-# Internally:
-# - Opens tracker (Notion)
-# - Syncs GitHub issues
-# - Pulls latest from Linear
-# - Shows yesterday's checkpoints
-# - Lists deployment status
-# - Checks CI/CD pipelines
+# Internally runs:
+# 1. Sync all productivity tools
+chitty reminders sync notion tracker
+chitty gtasks sync notion tracker
+chitty mstodo sync notion tracker
+chitty gcal sync notion tracker --tag "Meetings"
+
+# 2. Open tracker
+chitty open tracker
+
+# 3. Show today's agenda
+chitty reminders today
+chitty gcal events list --next 1day
+
+# 4. Review yesterday's work
+chitty checkpoints --since yesterday
+
+# 5. Sync development platforms
+chitty sync run tracker --targets github,linear
+
+# 6. Check deployment status
+chitty cf worker list --status
+chitty railway services list --status
+
+# 7. Check CI/CD
+chitty gh actions status
+```
+
+**With automation platforms:**
+```bash
+# Set up once via Apple Shortcuts
+chitty shortcuts create "Morning Routine" \
+  --trigger time:09:00 \
+  --actions "chitty morning"
+
+# Or via Google Home
+chitty ghome routine create "Start Work" \
+  --trigger time:09:00 \
+  --actions "chitty morning, broadcast 'Good morning! Your workspace is ready'"
+
+# Or via IFTTT
+chitty ifttt applet create "Morning Sync" \
+  --trigger time:09:00 \
+  --action chitty.morning
 ```
 
 ### 2. Feature Development
@@ -265,7 +302,75 @@ claude: "What did I work on yesterday?"
 # ChittyTracker MCP → reads checkpoints, shows summary
 ```
 
-### 7. Automation Workflows
+### 7. Cross-Platform Task Sync
+```bash
+# Unified view across all task platforms
+chitty tasks all
+
+# Internally queries:
+# - Notion Actions
+# - GitHub Issues
+# - Linear Issues
+# - Apple Reminders
+# - Google Tasks
+# - Microsoft To Do
+# - Jira tickets
+# - Asana tasks
+
+# Create task everywhere at once
+chitty task create "Deploy v1.2.3" \
+  --platforms notion,github,reminders,gtasks \
+  --due tomorrow \
+  --priority high
+
+# Auto-syncs when you complete anywhere
+# Complete in Apple Reminders → syncs to all platforms
+
+# Daily consolidation
+chitty tasks consolidate  # Finds duplicates, merges, syncs
+```
+
+### 8. Calendar-Driven Development
+```bash
+# Schedule a deployment
+chitty deploy schedule chittyauth \
+  --time "2024-11-04 14:00" \
+  --calendar "Deployments"
+
+# Creates:
+# - Google Calendar event with deployment details
+# - Apple Reminder 30min before
+# - Slack notification to team
+# - Notion entry in Decision Log
+# - IFTTT trigger at deploy time
+
+# At scheduled time, runs automatically via:
+chitty gcal automation create \
+  --calendar "Deployments" \
+  --action "chitty deploy execute"
+```
+
+### 9. Voice-Controlled Infrastructure
+```bash
+# Via Google Home
+"Hey Google, update my tracker"
+→ chitty nudge now
+
+"Hey Google, what's my deployment status?"
+→ chitty cf worker list --format voice
+
+"Hey Google, add task: review PR 123"
+→ chitty task create "Review PR 123" --platforms all
+
+# Via Siri (Apple Shortcuts)
+"Hey Siri, sync my tasks"
+→ chitty tasks consolidate
+
+"Hey Siri, checkpoint: finished OAuth"
+→ chitty checkpoint "Finished OAuth" --remind tomorrow
+```
+
+### 10. Automation Workflows
 ```bash
 # IFTTT: When GitHub issue closed → Update Notion
 chitty ifttt applet create "GitHub → Notion" \
