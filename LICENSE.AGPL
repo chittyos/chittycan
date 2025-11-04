@@ -1,0 +1,49 @@
+GNU AFFERO GENERAL PUBLIC LICENSE
+Version 3, 19 November 2007
+
+This license will replace the MIT license starting with v0.5.0.
+
+For commercial licensing inquiries: licensing@chitty.cc
+
+Copyright (C) 2024 ChittyCorp
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+---
+
+ADDITIONAL TERMS FOR CHITTYCAN:
+
+1. COMMERCIAL USE
+If you wish to use ChittyCan in a closed-source application or as a
+hosted service without open-sourcing your modifications, you must obtain
+a commercial license.
+
+Contact: licensing@chitty.cc
+
+2. NETWORK USE
+The AGPL requires that if you run a modified version of ChittyCan as a
+network service, you must make the complete source code available to
+users of that service.
+
+3. SELF-HOST LICENSE
+Enterprises wishing to self-host without open-sourcing modifications
+should purchase a commercial license.
+
+4. TRADEMARK
+"ChittyCan" and the ChittyCan logo are trademarks of ChittyCorp.
+You may not use these trademarks without permission.
+
+---
+
+Full AGPL v3 text: https://www.gnu.org/licenses/agpl-3.0.txt

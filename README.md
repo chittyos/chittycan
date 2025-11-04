@@ -3,9 +3,11 @@
 **"Can you...?" → "Yes you can!"**
 
 [![OpenAI Compatible](https://img.shields.io/badge/OpenAI-Compatible-green?logo=openai)](docs/benchmark-results.md)
-[![Tests](https://img.shields.io/github/actions/workflow/status/chittyapps/chittycan/parity-tests.yml?branch=main&label=parity%20tests)](https://github.com/chittyapps/chittycan/actions)
+[![Tests](https://img.shields.io/github/actions/workflow/status/chittycorp/chittycan/parity-tests.yml?branch=main&label=parity%20tests)](https://github.com/chittycorp/chittycan/actions)
 [![npm version](https://img.shields.io/npm/v/chittycan)](https://www.npmjs.com/package/chittycan)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+> **📢 License Notice:** v0.4.0 is MIT. v0.5.0+ will be AGPL v3 (open source, with commercial licensing for closed-source use). See [LICENSE_STRATEGY.md](LICENSE_STRATEGY.md) for details.
 
 Your completely autonomous network that navigates universal infrastructure and project management across the ChittyOS ecosystem
 
