@@ -5,6 +5,20 @@ All notable changes to ChittyCan will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2025-01-04
+
+### Fixed
+- **Hook installation:** Fixed missing `zsh/snippets.zsh` file in npm package distribution
+  - Added `copy:assets` script to copy zsh files during build
+  - Hook installation (`can hook install zsh`) now works correctly
+
+### Changed
+- **Natural language integration:** Simplified chitty CLI integration
+  - Added explicit `can chitty <args>` command for natural language processing
+  - Unknown commands now suggest using `can chitty "command"` format
+  - Removed automatic delegation to avoid confusion
+  - Users must explicitly use `can chitty` for natural language commands
+
 ## [0.4.0] - 2024-11-04
 
 ### Added - 🔓 AI Gateway Configuration (Infrastructure for Monetization)

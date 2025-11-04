@@ -2,6 +2,7 @@
 
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
+import chalk from "chalk";
 import { configMenu } from "./commands/config.js";
 import { open, listRemotes } from "./commands/open.js";
 import { nudgeNow, nudgeQuiet } from "./commands/nudge.js";
@@ -12,31 +13,14 @@ import { listExtensions, enableExtension, disableExtension, installExtension } f
 import { PluginLoader } from "./lib/plugin.js";
 import { doctor } from "./commands/doctor.js";
 import { briefCommand } from "./commands/brief.js";
-import { proxyToChitty, isSupportedCLI } from "./lib/chitty-proxy.js";
+import { proxyToChitty } from "./lib/chitty-proxy.js";
 
 // Load plugins early
 const config = (await import("./lib/config.js")).loadConfig();
 const pluginLoader = new PluginLoader(config);
 await pluginLoader.loadAll();
 
-// Check for unknown commands before yargs processes them
-const args = hideBin(process.argv);
-const knownCommands = ["config", "brief", "remote", "open", "nudge", "checkpoint", "checkpoints", "hook", "ext", "doctor", "sync"];
-const firstArg = args[0];
-
-// If first arg is a supported CLI (gh, docker, etc), always proxy to chitty for natural language interpretation
-if (firstArg && isSupportedCLI(firstArg)) {
-  proxyToChitty(args);
-  process.exit(0); // Won't reach here if proxyToChitty succeeds
-}
-
-// If first arg is a command (not a flag) and it's not known, proxy to chitty
-if (firstArg && !firstArg.startsWith("-") && !knownCommands.includes(firstArg)) {
-  proxyToChitty(args);
-  process.exit(0); // Won't reach here if proxyToChitty succeeds
-}
-
-yargs(args)
+yargs(hideBin(process.argv))
   .scriptName("can")
   .usage("$0 <command> [options]")
   .command(
@@ -245,6 +229,20 @@ yargs(args)
     }
   )
   .command(
+    "chitty [args..]",
+    "Pass-through to full chitty CLI (requires: npm install -g chitty)",
+    (yargs) =>
+      yargs.positional("args", {
+        describe: "Arguments to pass to chitty CLI",
+        type: "string",
+        array: true
+      }),
+    (argv) => {
+      const args = (argv.args as string[]) || [];
+      proxyToChitty(args);
+    }
+  )
+  .command(
     "sync",
     "Sync between Notion and GitHub",
     (yargs) =>
@@ -283,12 +281,19 @@ yargs(args)
     }
   )
   .fail((msg, err, yargs) => {
-    // Handle unknown arguments within known commands (e.g., "can sync gh")
-    if (msg && msg.includes("Unknown argument")) {
+    // If unknown command, suggest chitty
+    if (msg && msg.includes("Unknown command")) {
       const args = hideBin(process.argv);
-      console.log(); // Add spacing
-      proxyToChitty(args);
-      return; // Exit handled by proxyToChitty
+      const command = args.join(" ");
+      console.log();
+      console.error(chalk.red(`✗ Unknown command: ${command}`));
+      console.log();
+      console.log(chalk.yellow("💡 Tip: Try using the chitty command for natural language:"));
+      console.log(chalk.cyan(`   can chitty "${command}"`));
+      console.log();
+      console.log(chalk.dim("Or run 'can --help' to see available commands"));
+      console.log();
+      process.exit(1);
     }
     // For other errors, show help
     if (msg) console.error(msg);
