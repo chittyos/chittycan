@@ -1,15 +1,15 @@
 # ChittyCan
 
-**"Can you...?" → "Yes you can!"**
+> **chittycan learn. chittycan evolve. chittycan remember.**
+>
+> **chitty can, if you can.**
 
 [![OpenAI Compatible](https://img.shields.io/badge/OpenAI-Compatible-green?logo=openai)](docs/benchmark-results.md)
 [![Tests](https://img.shields.io/github/actions/workflow/status/chittycorp/chittycan/parity-tests.yml?branch=main&label=parity%20tests)](https://github.com/chittycorp/chittycan/actions)
 [![npm version](https://img.shields.io/npm/v/chittycan)](https://www.npmjs.com/package/chittycan)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> **📢 License Notice:** v0.4.0 is MIT. v0.5.0+ will be AGPL v3 (open source, with commercial licensing for closed-source use). See [LICENSE_STRATEGY.md](LICENSE_STRATEGY.md) for details.
-
-Your completely autonomous network that navigates universal infrastructure and project management across the ChittyOS ecosystem
+Your completely autonomous network that **grows with you**—learning your patterns, evolving your workflow, and remembering your context across every session.
 
 ChittyCan is a unified command-line tool that helps you manage every aspect of your development workflow:
 
@@ -33,6 +33,37 @@ npx chittycan
 # Initialize with interactive config
 can config
 ```
+
+## 🧠 Philosophy: Grow With Me
+
+ChittyCan is built on a simple but powerful idea: **your tools should learn from you, not the other way around.**
+
+It establishes your **ChittyDNA**—a living blueprint of how you work, what you prefer, and how you create.
+
+### chittycan learn
+Every command you run, every pattern you create, every preference you express—ChittyCan observes and learns. Over time, it understands how you work and encodes it into your **ChittyDNA**.
+
+### chittycan evolve
+ChittyCan doesn't stay static. It adapts to your changing workflow, suggests optimizations, and grows more intelligent with each interaction—evolving your **ChittyDNA** as you grow.
+
+### chittycan remember
+Context is preserved across sessions. ChittyCan remembers what you accomplished, what you configured, and what you prefer—your **ChittyDNA** persists, so you never start from scratch.
+
+### chitty can, if you can
+You define the possibilities. ChittyCan amplifies your capabilities—learning your patterns, automating the repetitive, and scaling with your ambitions.
+
+**The result?** A tool that becomes more powerful the longer you use it. Not through manual configuration, but through intelligent observation and evolution.
+
+**ChittyDNA** means:
+- Your workflow patterns are automatically recognized
+- Your tool preferences inform smart routing decisions
+- Your project context is preserved across sessions
+- Your automation evolves with your needs
+- Your productivity compounds over time
+
+ChittyCan doesn't just remember commands—it understands **you**.
+
+---
 
 ## 🚀 AI Gateway (New in v0.4.0!)
 
