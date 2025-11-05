@@ -1,7 +1,7 @@
 {
   "name": "chittycan",
-  "version": "0.4.2",
-  "description": "Your completely autonomous network for managing 80+ platforms from one command - Notion, GitHub, Cloudflare, Neon, Linear, and all ChittyOS services",
+  "version": "0.5.0",
+  "description": "Your completely autonomous network that grows with you - DNA ownership platform with encrypted vaults, PDX portability, and ChittyFoundation governance",
   "type": "module",
   "bin": {
     "can": "dist/index.js"

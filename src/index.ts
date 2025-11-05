@@ -12,8 +12,7 @@ import { listExtensions, enableExtension, disableExtension, installExtension } f
 import { PluginLoader } from "./lib/plugin.js";
 import { doctor } from "./commands/doctor.js";
 import { briefCommand } from "./commands/brief.js";
-import { proxyToChitty, isSupportedCLI } from "./lib/chitty-proxy.js";
-import { smartChittyCommand } from "./lib/smart-chitty.js";
+import { chittyCommand } from "./commands/chitty.js";
 import {
   listMcpServers,
   startMcpServer,
@@ -22,27 +21,36 @@ import {
   listMcpTools,
   testMcpConnection
 } from "./commands/mcp.js";
+import { connectSetup, connectStatus, connectToken } from "./commands/connect.js";
+import { generateMcpConfig, installMcpConfig } from "./commands/mcp-config.js";
+import {
+  exportDNACommand,
+  importDNACommand,
+  dnaStatusCommand,
+  dnaHistoryCommand,
+  revokeDNACommand,
+  restoreDNACommand
+} from "./commands/dna.js";
+import { complianceReportCommand } from "./commands/compliance.js";
 
 // Load plugins early
 const config = (await import("./lib/config.js")).loadConfig();
 const pluginLoader = new PluginLoader(config);
 await pluginLoader.loadAll();
 
-// Check for unknown commands before yargs processes them
+// Check for direct CLI routing (can gh ... instead of can chitty gh ...)
 const args = hideBin(process.argv);
-const knownCommands = ["config", "brief", "chitty", "remote", "open", "nudge", "checkpoint", "checkpoints", "hook", "ext", "doctor", "sync", "mcp"];
 const firstArg = args[0];
 
-// If first arg is a supported CLI (gh, docker, etc), always proxy to chitty for natural language interpretation
-if (firstArg && isSupportedCLI(firstArg)) {
-  proxyToChitty(args);
-  process.exit(0); // Won't reach here if proxyToChitty succeeds
-}
+// Import CLI configs to check supported CLIs
+const { CLI_CONFIGS } = await import("./commands/chitty.js");
 
-// If first arg is a command (not a flag) and it's not known, proxy to chitty
-if (firstArg && !firstArg.startsWith("-") && !knownCommands.includes(firstArg)) {
-  proxyToChitty(args);
-  process.exit(0); // Won't reach here if proxyToChitty succeeds
+// If first arg is a supported CLI, auto-route to chitty handler
+if (firstArg && firstArg in CLI_CONFIGS) {
+  // This is a direct CLI command like "can gh clone repo"
+  // Route to chitty handler automatically
+  await chittyCommand(args);
+  process.exit(0);
 }
 
 yargs(args)
@@ -66,16 +74,16 @@ yargs(args)
   )
   .command(
     "chitty [args..]",
-    "Pass-through to full chitty CLI with smart config awareness",
+    "Natural language command interpreter (AI-powered)",
     (yargs) =>
       yargs.positional("args", {
-        describe: "Arguments to pass to chitty CLI",
+        describe: "CLI and natural language command",
         type: "string",
         array: true
       }),
     async (argv) => {
       const args = (argv.args as string[]) || [];
-      await smartChittyCommand(args);
+      await chittyCommand(args);
     }
   )
   .command(
@@ -387,15 +395,161 @@ yargs(args)
       yargs.showHelp();
     }
   )
-  .fail((msg, err, yargs) => {
-    // Handle unknown arguments within known commands (e.g., "can sync gh")
-    if (msg && msg.includes("Unknown argument")) {
-      const args = hideBin(process.argv);
-      console.log(); // Add spacing
-      proxyToChitty(args);
-      return; // Exit handled by proxyToChitty
+  .command(
+    "connect",
+    "ChittyConnect integration hub (MCP, GitHub, proxies)",
+    (yargs) =>
+      yargs
+        .command(
+          "setup",
+          "Quick setup with auto-detection",
+          () => {},
+          async () => {
+            await connectSetup();
+          }
+        )
+        .command(
+          "status",
+          "Show configuration",
+          () => {},
+          async () => {
+            await connectStatus();
+          }
+        )
+        .command(
+          "token [value]",
+          "Update API token",
+          (yargs) =>
+            yargs.positional("value", {
+              describe: "New token value (or prompt)",
+              type: "string"
+            }),
+          async (argv) => {
+            await connectToken(argv.value as string);
+          }
+        )
+        .command(
+          "mcp-config",
+          "Generate Claude Code MCP configuration",
+          () => {},
+          async () => {
+            await generateMcpConfig();
+          }
+        )
+        .command(
+          "mcp-install",
+          "Auto-install MCP config to Claude Code",
+          () => {},
+          async () => {
+            await installMcpConfig();
+          }
+        ),
+    () => {
+      yargs.showHelp();
     }
-    // For other errors, show help
+  )
+  .command(
+    "dna",
+    "Manage your ChittyDNA (ownership, portability, attribution)",
+    (yargs) =>
+      yargs
+        .command(
+          "export",
+          "Export DNA in PDX format",
+          (yargs) =>
+            yargs
+              .option("privacy", {
+                type: "string",
+                choices: ["full", "hash-only"],
+                default: "full",
+                description: "Privacy mode"
+              })
+              .option("output", {
+                type: "string",
+                default: "~/chittycan-dna.json",
+                description: "Output file path"
+              }),
+          async (argv) => {
+            await exportDNACommand({
+              privacy: argv.privacy as "full" | "hash-only",
+              output: argv.output as string
+            });
+          }
+        )
+        .command(
+          "import <file>",
+          "Import DNA from PDX file",
+          (yargs) =>
+            yargs
+              .positional("file", {
+                describe: "PDX file path",
+                type: "string",
+                demandOption: true
+              })
+              .option("conflict-resolution", {
+                type: "string",
+                choices: ["merge", "replace", "rename", "skip"],
+                default: "merge",
+                description: "How to handle conflicting patterns"
+              }),
+          async (argv) => {
+            await importDNACommand({
+              file: argv.file as string,
+              conflictResolution: argv["conflict-resolution"] as "merge" | "replace" | "rename" | "skip"
+            });
+          }
+        )
+        .command(
+          "status",
+          "Show DNA statistics and top patterns",
+          () => {},
+          async () => {
+            await dnaStatusCommand();
+          }
+        )
+        .command(
+          "history",
+          "View DNA evolution history (snapshots)",
+          (yargs) =>
+            yargs.option("limit", {
+              type: "number",
+              default: 10,
+              description: "Number of snapshots to show"
+            }),
+          async (argv) => {
+            await dnaHistoryCommand({ limit: argv.limit });
+          }
+        )
+        .command(
+          "restore",
+          "Restore DNA from snapshot",
+          () => {},
+          async () => {
+            await restoreDNACommand();
+          }
+        )
+        .command(
+          "revoke",
+          "Revoke DNA (ethical exit)",
+          () => {},
+          async () => {
+            await revokeDNACommand();
+          }
+        ),
+    () => {
+      yargs.showHelp();
+    }
+  )
+  .command(
+    "compliance",
+    "Generate Foundation compliance report",
+    () => {},
+    async () => {
+      await complianceReportCommand();
+    }
+  )
+  .fail((msg, err, yargs) => {
+    // For errors, show help
     if (msg) console.error(msg);
     if (err) console.error(err);
     yargs.showHelp();

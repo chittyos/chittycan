@@ -119,8 +119,16 @@ export interface ApiRemote {
   };
 }
 
+export interface ChittyConnectRemote {
+  type: "chittyconnect";
+  baseUrl: string;
+  apiToken?: string; // Optional - falls back to env CHITTY_TOKEN
+  mcpEnabled?: boolean;
+  githubAppInstallation?: string;
+}
+
 export interface Config {
-  remotes: Record<string, NotionRemote | GitHubRemote | RcloneRemote | McpRemote | CloudflareRemote | NeonRemote | SshRemote | AiRemote | ApiRemote>;
+  remotes: Record<string, NotionRemote | GitHubRemote | RcloneRemote | McpRemote | CloudflareRemote | NeonRemote | SshRemote | AiRemote | ApiRemote | ChittyConnectRemote>;
   nudges: {
     enabled: boolean;
     intervalMinutes: number;
@@ -143,8 +151,8 @@ export interface Config {
   };
 }
 
-const CONFIG_DIR = path.join(os.homedir(), ".config", "chitty");
-const CONFIG_PATH = path.join(CONFIG_DIR, "config.json");
+export const CONFIG_DIR = path.join(os.homedir(), ".config", "chitty");
+export const CONFIG_PATH = path.join(CONFIG_DIR, "config.json");
 
 export function loadConfig(): Config {
   try {
