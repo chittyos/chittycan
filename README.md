@@ -11,6 +11,42 @@
 
 Your completely autonomous network that **grows with you**—learning your patterns, evolving your workflow, and remembering your context across every session.
 
+## 🎯 NEW: Your CLI Solution Provider (v0.4.3)
+
+**Stop memorizing syntax. Start speaking naturally.**
+
+ChittyCan now translates plain English into perfect CLI commands for GitHub, Docker, Kubernetes, and 14+ other tools.
+
+```bash
+# No quotes needed—just type naturally
+can gh clone my repo
+can docker list running containers
+can kubectl get pods in production
+```
+
+**Learn more:** [can.mychitty.com](https://can.mychitty.com) | [mychitty.com/can](https://mychitty.com/can)
+
+### The Evolution: From Asking to Commanding
+
+1. **Beginner**: `can chitty gh clone repo` (guided, explicit)
+2. **Intermediate**: `can gh clone repo` (direct, confident)
+3. **Advanced**: System learns your patterns and personalizes itself
+
+### What You Get
+
+- 💬 **Natural Language** - Speak in plain English, no syntax memorization
+- 🎯 **14+ CLIs Supported** - gh, docker, kubectl, git, aws, gcloud, terraform, and more
+- 🧠 **Learns Your Patterns** - Tracks usage, suggests commands, grows with you
+- 🔧 **Custom Workflows** - `can chitty start coffee` → triggers your coffee machine
+- ✅ **Guided Setup** - Checks installation, auth, and walks you through configuration
+- 📊 **Usage Insights** - `can chitty insights` shows your patterns
+
+[See full CLI Solution Provider docs →](docs/MYCHITTY_PROMO.md)
+
+---
+
+## 🛠️ Complete Development Workflow
+
 ChittyCan is a unified command-line tool that helps you manage every aspect of your development workflow:
 
 - 📋 **Project Tracking** - Sync between Notion databases and GitHub Projects
@@ -62,6 +98,51 @@ You define the possibilities. ChittyCan amplifies your capabilities—learning y
 - Your productivity compounds over time
 
 ChittyCan doesn't just remember commands—it understands **you**.
+
+---
+
+## 🏛️ Foundation Governance
+
+ChittyCan operates under the **[ChittyFoundation Charter v0.1](FOUNDATION.md)** - a comprehensive framework that protects human dignity, ownership, and fairness in AI systems.
+
+### You Own Your DNA
+
+Your ChittyDNA belongs to **you**, not to ChittyCan. We obtain a scoped, revocable license—but you retain full ownership rights.
+
+**This means:**
+- ✅ **Export Anytime:** Your DNA is portable in PDX (Portable DNA eXchange) format
+- ✅ **Revoke Access:** You can revoke ChittyCan's license and delete your DNA
+- ✅ **Privacy with Proof:** We log hashes, not content—provable without exposure
+- ✅ **Attribution Chains:** If we monetize, you get loyalty-based compensation for your DNA
+- ✅ **Ethical Exit:** If we violate Foundation values, your exit rights activate immediately
+
+### ChittyCertified Roadmap
+
+ChittyCan is pursuing **ChittyCertified** status in three tiers:
+
+| Tier | Target | Status | Key Features |
+|------|--------|--------|--------------|
+| **Bronze** | v0.5.0 (Q1 2025) | 🟡 In Progress | DNA vaults, PDX export/import, privacy-preserving audits |
+| **Silver** | v0.6.0 (Q2 2025) | 🔴 Planned | Attribution chains, fair-pay metrics, cross-platform DNA |
+| **Gold** | v0.7.0 (Q3 2025) | 🔴 Planned | Zero-knowledge proofs, AI caretakers, global compliance |
+
+### Foundation Principles
+
+ChittyCan adheres to these non-negotiable principles:
+
+1. **You Own Your Data & DNA** - Individuals own their decision patterns; orgs obtain licenses, not ownership
+2. **Portability by Default** - Export, revoke, and migrate are baseline rights
+3. **Attribution → Compensation** - Traceable contributions map to loyalty-based compensation
+4. **Privacy with Proof** - Content can remain private while proofs remain verifiable
+5. **Human Safety & Dignity** - No surveillance abuse, coercion, or harm
+6. **Transparency over Theater** - Decisions and metrics are explainable and auditable
+7. **Diversity as Resilience** - Multi-provider support prevents vendor lock-in
+
+### Learn More
+
+- **[Foundation Compliance Document](FOUNDATION.md)** - Complete compliance roadmap
+- **[PDX Specification](PDX_SPEC.md)** - Technical spec for DNA portability
+- **[ChittyFoundation Charter](https://foundation.chitty.cc/charter)** - Full governance framework
 
 ---
 
