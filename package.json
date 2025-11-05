@@ -18,6 +18,7 @@
     "build": "tsc -p . && npm run copy:assets",
     "copy:assets": "mkdir -p dist/zsh && cp src/zsh/snippets.zsh dist/zsh/",
     "dev": "tsc -p . --watch",
+    "mcp": "node dist/mcp-server.js",
     "prepublishOnly": "npm run build && npm run test",
     "postinstall": "node -e \"console.log('\\\\n✓ ChittyCan installed! Run: can config\\\\n')\"",
     "test": "vitest run",
@@ -62,9 +63,11 @@
     "yargs": "^17.7.2"
   },
   "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
     "@types/inquirer": "^9.0.7",
     "@types/node": "^20.10.6",
     "@types/yargs": "^17.0.32",
+    "fs-extra": "^11.3.2",
     "typescript": "^5.6.3",
     "vitest": "^4.0.6"
   }

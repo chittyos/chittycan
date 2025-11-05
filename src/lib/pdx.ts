@@ -91,7 +91,7 @@ export async function exportDNA(options: ExportOptions): Promise<PDXExport> {
     '@type': 'ChittyDNA',
     version: '1.0.0',
     owner: {
-      email: config.user?.email,
+      email: (config as any).user?.email,
       consent: {
         learning: true,
         portability: true,
@@ -188,8 +188,8 @@ async function loadAttribution(): Promise<any> {
 
   const lines = fs.readFileSync(attributionPath, 'utf8').trim().split('\n');
   const contributions = lines
-    .filter(line => line.trim())
-    .map(line => JSON.parse(line));
+    .filter((line: string) => line.trim())
+    .map((line: string) => JSON.parse(line));
 
   return {
     enabled: true,
@@ -405,9 +405,9 @@ export async function checkExportRateLimit(): Promise<{ allowed: boolean; nextAl
 
   const lines = fs.readFileSync(auditPath, 'utf8').trim().split('\n');
   const exports = lines
-    .filter(line => line.trim())
-    .map(line => JSON.parse(line))
-    .filter(entry => entry.event === 'dna_exported');
+    .filter((line: string) => line.trim())
+    .map((line: string) => JSON.parse(line))
+    .filter((entry: any) => entry.event === 'dna_exported');
 
   if (exports.length === 0) {
     return { allowed: true };

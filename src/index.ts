@@ -32,6 +32,13 @@ import {
   restoreDNACommand
 } from "./commands/dna.js";
 import { complianceReportCommand } from "./commands/compliance.js";
+import {
+  analyticsCommand,
+  predictCommand,
+  suggestionsCommand,
+  learnCommand,
+  growthCommand
+} from "./commands/grow.js";
 
 // Load plugins early
 const config = (await import("./lib/config.js")).loadConfig();
@@ -546,6 +553,63 @@ yargs(args)
     () => {},
     async () => {
       await complianceReportCommand();
+    }
+  )
+  .command(
+    "analytics",
+    "Show usage analytics dashboard",
+    () => {},
+    () => {
+      analyticsCommand();
+    }
+  )
+  .command(
+    "predict",
+    "Show smart command predictions",
+    (yargs) =>
+      yargs.option("quiet", {
+        type: "boolean",
+        default: false,
+        description: "Only output top prediction (for shell integration)"
+      }),
+    async (argv) => {
+      await predictCommand({ quiet: argv.quiet });
+    }
+  )
+  .command(
+    "suggestions",
+    "Show workflow suggestions from repeated patterns",
+    () => {},
+    async () => {
+      await suggestionsCommand();
+    }
+  )
+  .command(
+    "learn <type> [args..]",
+    "Learning hook (called from shell - usually automatic)",
+    (yargs) =>
+      yargs
+        .positional("type", {
+          describe: "Learning type",
+          type: "string",
+          choices: ["command", "context", "git"],
+          demandOption: true
+        })
+        .positional("args", {
+          describe: "Additional arguments",
+          type: "string",
+          array: true
+        }),
+    async (argv) => {
+      await learnCommand(argv.type as any, (argv.args as string[]) || []);
+    }
+  )
+  .command(
+    "growth",
+    "Show growth stats (simplified analytics)",
+    () => {},
+    () => {
+      growthCommand();
     }
   )
   .fail((msg, err, yargs) => {

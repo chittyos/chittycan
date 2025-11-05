@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "chittyconnect": {
+      "command": "node",
+      "args": [
+        "/Users/nb/Projects/development/chittycan/dist/mcp-server.js"
+      ],
+      "env": {
+        "CHITTY_BASE_URL": "https://connect.chitty.cc"
+      },
+      "description": "ChittyConnect MCP Server - AI-intelligent integration spine with GitHub App, OpenAPI, proxies, and context management"
+    }
+  }
+}

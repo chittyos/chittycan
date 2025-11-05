@@ -9,7 +9,7 @@ import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
-interface CommandUsage {
+export interface CommandUsage {
   cli: string;
   naturalLanguage: string;
   interpretedCommand: string;
@@ -17,7 +17,7 @@ interface CommandUsage {
   successful: boolean;
 }
 
-interface UsageStats {
+export interface UsageStats {
   commands: CommandUsage[];
   cliUsageCount: Record<string, number>;
   frequentPatterns: Array<{

@@ -136,15 +136,15 @@ export class AuditLogger {
 
     const lines = fs.readFileSync(logPath, 'utf8').trim().split('\n');
     let entries = lines
-      .filter(line => line.trim())
-      .map(line => JSON.parse(line) as AuditEntry);
+      .filter((line: string) => line.trim())
+      .map((line: string) => JSON.parse(line) as AuditEntry);
 
     if (filter) {
       if (filter.event) {
-        entries = entries.filter(e => e.event === filter.event);
+        entries = entries.filter((e: AuditEntry) => e.event === filter.event);
       }
       if (filter.since) {
-        entries = entries.filter(e => new Date(e.timestamp) >= filter.since!);
+        entries = entries.filter((e: AuditEntry) => new Date(e.timestamp) >= filter.since!);
       }
     }
 

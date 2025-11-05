@@ -138,7 +138,7 @@ export async function complianceReportCommand(): Promise<void> {
     },
 
     // Recommendations
-    recommendations: []
+    recommendations: [] as string[]
   };
 
   // Generate recommendations

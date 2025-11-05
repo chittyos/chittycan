@@ -113,6 +113,20 @@ export async function chittyCommand(args: string[]): Promise<void> {
     return;
   }
 
+  // Special command: analytics dashboard
+  if (args[0] === "analytics" || args[0] === "dashboard") {
+    const { analyticsCommand } = await import("./grow.js");
+    analyticsCommand();
+    return;
+  }
+
+  // Special command: suggestions
+  if (args[0] === "suggestions" || args[0] === "suggest") {
+    const { suggestionsCommand } = await import("./grow.js");
+    await suggestionsCommand();
+    return;
+  }
+
   // Special command: list workflows
   if (args[0] === "workflows" || args[0] === "list") {
     listWorkflows();
