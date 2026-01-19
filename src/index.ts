@@ -39,6 +39,7 @@ import {
   learnCommand,
   growthCommand
 } from "./commands/grow.js";
+import { cleanup } from "./commands/cleanup.js";
 
 // Load plugins early
 const config = (await import("./lib/config.js")).loadConfig();
@@ -280,6 +281,68 @@ yargs(args)
     () => {},
     async () => {
       await doctor();
+    }
+  )
+  .command(
+    "cleanup",
+    "Intelligent project cleanup with smart detection",
+    (yargs: any) =>
+      yargs
+        .option("live", {
+          describe: "Apply changes (default is dry run)",
+          type: "boolean",
+          default: false
+        })
+        .option("fix", {
+          describe: "Automatically fix issues",
+          type: "boolean",
+          default: false
+        })
+        .option("deep", {
+          describe: "Deep scan (includes git analysis, large files)",
+          type: "boolean",
+          default: false
+        })
+        .option("interactive", {
+          describe: "Interactive mode with prompts",
+          type: "boolean",
+          default: true
+        })
+        .option("quiet", {
+          describe: "Suppress output",
+          type: "boolean",
+          default: false
+        })
+        .option("agent", {
+          describe: "Run chittyagent-cleaner scripts",
+          type: "string",
+          choices: ["local", "volume", "kondo", "all"]
+        })
+        .option("submit", {
+          describe: "Submit findings as GitHub issues",
+          type: "boolean",
+          default: false
+        })
+        .option("pr", {
+          describe: "Create PR for auto-fixable issues",
+          type: "boolean",
+          default: false
+        })
+        .option("cwd", {
+          describe: "Directory to clean",
+          type: "string",
+          default: process.cwd()
+        }),
+    async (argv: any) => {
+      await cleanup({
+        cwd: argv.cwd,
+        dryRun: !argv.live,
+        autofix: argv.fix,
+        deep: argv.deep,
+        interactive: argv.interactive,
+        quiet: argv.quiet,
+        agent: argv.agent as "local" | "volume" | "kondo" | "all" | undefined
+      });
     }
   )
   .command(
