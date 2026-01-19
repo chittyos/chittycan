@@ -127,6 +127,18 @@ export interface ChittyConnectRemote {
   githubAppInstallation?: string;
 }
 
+export interface CleanupConfig {
+  safeToDelete?: string[];
+  autofix?: boolean;
+  deep?: boolean;
+  agentCleanerPath?: string;
+  integrations?: {
+    localCleanup?: boolean;
+    volumeCleanup?: boolean;
+    kondo?: boolean;
+  };
+}
+
 export interface Config {
   remotes: Record<string, NotionRemote | GitHubRemote | RcloneRemote | McpRemote | CloudflareRemote | NeonRemote | SshRemote | AiRemote | ApiRemote | ChittyConnectRemote>;
   nudges: {
@@ -149,6 +161,7 @@ export interface Config {
   mcp?: {
     writeEnabled?: boolean;
   };
+  cleanup?: CleanupConfig;
 }
 
 export const CONFIG_DIR = path.join(os.homedir(), ".config", "chitty");
