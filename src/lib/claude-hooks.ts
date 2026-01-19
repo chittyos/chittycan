@@ -377,6 +377,7 @@ export async function onPreCompact(contextSize: number, threshold: number): Prom
 
 /**
  * Update session tracker (Neon database + optional Notion)
+ * Uses Neon HTTP API to avoid ESM/CJS issues
  */
 export async function updateNotionTracker(eventType: string, data: any): Promise<void> {
   const config = loadConfig();
@@ -384,20 +385,16 @@ export async function updateNotionTracker(eventType: string, data: any): Promise
     ? basename(data.metadata.cwd)
     : "unknown";
 
-  // Primary: Store in Neon database
+  // Primary: Store in Neon database via HTTP API
   const neonRemote = Object.values(config.remotes || {}).find((r: any) => r.type === "neon") as any;
 
   if (neonRemote?.connectionString) {
     try {
-      const { Pool } = await import("pg");
-      const pool = new Pool({
-        connectionString: neonRemote.connectionString,
-        connectionTimeoutMillis: 5000,
-        idleTimeoutMillis: 5000
-      });
+      let result;
 
       if (eventType === "session_start") {
-        await pool.query(
+        result = await neonHttpQuery(
+          neonRemote.connectionString,
           `INSERT INTO chittycan_sessions (session_id, platform, project, cwd, git_branch, metadata)
            VALUES ($1, $2, $3, $4, $5, $6)`,
           [
@@ -410,15 +407,19 @@ export async function updateNotionTracker(eventType: string, data: any): Promise
           ]
         );
       } else if (eventType === "session_end") {
-        await pool.query(
+        result = await neonHttpQuery(
+          neonRemote.connectionString,
           `UPDATE chittycan_sessions SET ended_at = NOW() WHERE session_id = $1`,
           [data.sessionId]
         );
       }
 
-      await pool.end();
-      console.log(`📝 Notion tracker updated: ${eventType}`);
-      return;
+      if (result?.ok) {
+        console.log(`📝 Notion tracker updated: ${eventType}`);
+        return;
+      } else {
+        throw new Error(result?.error || "Database operation failed");
+      }
     } catch (error: any) {
       console.log(`📝 Session logged locally (DB sync failed: ${error.message})`);
     }
@@ -436,7 +437,8 @@ export async function updateNotionTracker(eventType: string, data: any): Promise
 }
 
 /**
- * Log tool event to database
+ * Log tool event to database using Neon HTTP API
+ * Uses fetch instead of pg driver to avoid ESM/CJS issues
  */
 export async function logToolEvent(
   eventType: "tool_pre" | "tool_post",
@@ -454,34 +456,63 @@ export async function logToolEvent(
   }
 
   try {
-    const { Pool } = await import("pg");
-    const pool = new Pool({
-      connectionString: neonRemote.connectionString,
-      connectionTimeoutMillis: 5000,
-      idleTimeoutMillis: 5000
-    });
-
     const projectName = basename(process.cwd());
     const eventHash = hashSensitiveData({ toolName, eventData });
+    const sanitizedData = JSON.stringify({ toolName, ...sanitizeEventData(eventData) });
 
-    await pool.query(
+    // Use Neon HTTP API instead of pg driver
+    const result = await neonHttpQuery(
+      neonRemote.connectionString,
       `INSERT INTO chittycan_events (event_type, tool_name, success, platform, project, event_data, event_hash)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        eventType,
-        toolName,
-        success ?? null,
-        "code",
-        projectName,
-        JSON.stringify({ toolName, ...sanitizeEventData(eventData) }),
-        eventHash
-      ]
+      [eventType, toolName, success ?? null, "code", projectName, sanitizedData, eventHash]
     );
 
-    await pool.end();
+    if (!result.ok) {
+      throw new Error(result.error || "Database insert failed");
+    }
   } catch (error: any) {
     // Silent fail for event logging - don't disrupt the user
     logLearningEvent({ eventType, toolName, success, error: error.message, timestamp: new Date().toISOString() });
+  }
+}
+
+/**
+ * Execute SQL query via Neon HTTP API
+ * Converts postgres connection string to HTTP endpoint
+ */
+async function neonHttpQuery(
+  connectionString: string,
+  query: string,
+  params: any[]
+): Promise<{ ok: boolean; data?: any; error?: string }> {
+  try {
+    // Parse connection string to extract host
+    // Format: postgres://user:pass@host/database?sslmode=require
+    const url = new URL(connectionString);
+    const httpEndpoint = `https://${url.hostname}/sql`;
+
+    const response = await fetch(httpEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Neon-Connection-String": connectionString
+      },
+      body: JSON.stringify({
+        query,
+        params
+      })
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      return { ok: false, error: `HTTP ${response.status}: ${text}` };
+    }
+
+    const data = await response.json();
+    return { ok: true, data };
+  } catch (error: any) {
+    return { ok: false, error: error.message };
   }
 }
 

@@ -16,7 +16,7 @@ import {
   onPreCompact,
   logToolEvent
 } from "../lib/claude-hooks.js";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
@@ -250,20 +250,21 @@ async function maybeRunReflection(): Promise<void> {
   setEventCount(count);
 
   // Trigger reflection every 20 tool uses
+  // Note: Reflection modules not yet implemented - just track the count for now
   if (count % 20 === 0) {
-    setTimeout(async () => {
-      try {
-        const { runReflectionCycle } = await import("../lib/reflection-engine.js");
-        const { extractNuancedPatterns } = await import("../lib/learning-goals.js");
-
-        // Run both reflection systems
-        await runReflectionCycle();
-        await extractNuancedPatterns();
-      } catch (error) {
-        // Silent fail
-      }
-    }, 1000);
+    // TODO: Implement reflection-engine.js and learning-goals.js
+    // For now, just log that reflection would run
+    logSessionEvent("reflection_trigger", { count, timestamp: new Date().toISOString() });
   }
+}
+
+function logSessionEvent(type: string, data: any): void {
+  try {
+    const sessionsLog = join(homedir(), ".chittycan", "hooks", "sessions.jsonl");
+    const dir = join(homedir(), ".chittycan", "hooks");
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    appendFileSync(sessionsLog, JSON.stringify({ type, ...data }) + "\n");
+  } catch {}
 }
 
 /**

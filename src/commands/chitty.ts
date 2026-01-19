@@ -133,6 +133,27 @@ export async function chittyCommand(args: string[]): Promise<void> {
     return;
   }
 
+  // Special command: log-tool (called by Claude Code hooks)
+  if (args[0] === "log-tool") {
+    const { handleLogTool } = await import("./hook-handlers.js");
+    await handleLogTool(args.slice(1));
+    return;
+  }
+
+  // Special command: learn (called by PreToolUse hook)
+  if (args[0] === "learn") {
+    const { handleToolPre } = await import("./hook-handlers.js");
+    await handleToolPre(args.slice(1));
+    return;
+  }
+
+  // Special command: improve (called by PostToolUse hook)
+  if (args[0] === "improve") {
+    const { handleToolPost } = await import("./hook-handlers.js");
+    await handleToolPost(args.slice(1));
+    return;
+  }
+
   // Join all args as natural language (no quotes needed!)
   const naturalLanguage = args.join(" ");
 
