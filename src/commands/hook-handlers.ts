@@ -21,8 +21,9 @@ import { join } from "path";
 import { homedir } from "os";
 
 /**
- * Handler: can chitty learn tool-pre
- * Called by PreToolUse hook
+ * Forwards a tool pre-use event for learning and processing.
+ *
+ * @param args - Array where the first element is the tool name and the remaining elements are the tool's raw arguments; the handler sends the tool name and the joined raw arguments for processing.
  */
 export async function handleToolPre(args: string[]): Promise<void> {
   try {
@@ -37,8 +38,13 @@ export async function handleToolPre(args: string[]): Promise<void> {
 }
 
 /**
- * Handler: can chitty improve tool-post
- * Called by PostToolUse hook
+ * Process a tool post-use event and report its outcome to the system.
+ *
+ * Parses `args` to determine the tool name (first element, default `"unknown"`) and the tool result (second element, default `"unknown"`), derives a `success` flag when the result equals `"success"` or `"true"`, forwards that information to the post-tool handler, and may trigger a periodic reflection cycle.
+ *
+ * Failures are caught and logged; this function does not throw.
+ *
+ * @param args - Array where `args[0]` is the tool name and `args[1]` is the result string; subsequent elements are ignored
  */
 export async function handleToolPost(args: string[]): Promise<void> {
   try {
@@ -57,8 +63,9 @@ export async function handleToolPost(args: string[]): Promise<void> {
 }
 
 /**
- * Handler: can chitty review notification
- * Called by Notification hook
+ * Forward a formatted notification (type and message) to the notification handler.
+ *
+ * @param args - Notification parts where the first element is the type (`"info" | "warning" | "error"`, defaults to `"info"`) and the remaining elements are joined into the notification message
  */
 export async function handleNotification(args: string[]): Promise<void> {
   const type = (args[0] || "info") as "info" | "warning" | "error";
@@ -68,8 +75,15 @@ export async function handleNotification(args: string[]): Promise<void> {
 }
 
 /**
- * Handler: can chitty evaluate preferences
- * Called by UserPromptSubmit hook
+ * Forwards a user's prompt to the preferences evaluation handler.
+ *
+ * Composes the provided `args` into a single prompt string and submits it along with a context
+ * object (including the current working directory and an empty `files` array) to the preferences
+ * evaluation hook.
+ *
+ * @param args - Segments of the user's prompt; these are joined with spaces to form the full prompt
+ *
+ * Errors are logged to the console and not propagated to the caller.
  */
 export async function handleEvaluatePreferences(args: string[]): Promise<void> {
   try {
@@ -84,8 +98,12 @@ export async function handleEvaluatePreferences(args: string[]): Promise<void> {
 }
 
 /**
- * Handler: can chitty log enhancement
- * Called by UserPromptSubmit hook
+ * Forwards a submitted user prompt to the enhancement-logging pipeline.
+ *
+ * Joins `args` into a single prompt string and invokes the user-prompt handler with a context
+ * containing an empty `files` array and the current working directory.
+ *
+ * @param args - Parts of the submitted prompt that will be joined with spaces into the final prompt
  */
 export async function handleLogEnhancement(args: string[]): Promise<void> {
   const prompt = args.join(" ");
@@ -96,8 +114,11 @@ export async function handleLogEnhancement(args: string[]): Promise<void> {
 }
 
 /**
- * Handler: can chitty update-notion
- * Called by SessionStart and Stop hooks
+ * Schedule a background update to the Notion tracker for a session-related event.
+ *
+ * Builds an event payload (timestamp, event type, and session id) and schedules a short-delayed background call to the Notion tracker.
+ *
+ * @param args - Positional arguments: `args[0]` is the event type (defaults to `"session"`), `args[1]` is the session id (generated if omitted)
  */
 export async function handleUpdateNotion(args: string[]): Promise<void> {
   const eventType = args[0] || "session";
@@ -115,8 +136,9 @@ export async function handleUpdateNotion(args: string[]): Promise<void> {
 }
 
 /**
- * Handler: can chitty discover mcp-tools
- * Called by SessionStart hook
+ * Starts a new session event to announce discovery of MCP tools with local metadata.
+ *
+ * Generates a session ID and calls `onSessionStart` with an object containing the current working directory, the detected Git branch (if any), and a `claudeVersion` placeholder.
  */
 export async function handleDiscoverMcpTools(): Promise<void> {
   const sessionId = generateSessionId();
@@ -130,8 +152,12 @@ export async function handleDiscoverMcpTools(): Promise<void> {
 }
 
 /**
- * Handler: can chitty print session-info
- * Called by Stop hook
+ * Signals the end of a session by sending a basic session summary to the session-stop handler.
+ *
+ * If a session ID is not provided, a new session ID is generated. The summary contains
+ * placeholders for `toolsUsed`, `tasksCompleted`, and `filesModified`.
+ *
+ * @param args - Hook arguments; `args[0]`, if present, is used as the session ID
  */
 export async function handlePrintSessionInfo(args: string[]): Promise<void> {
   try {
@@ -150,8 +176,11 @@ export async function handlePrintSessionInfo(args: string[]): Promise<void> {
 }
 
 /**
- * Handler: can chitty condense session
- * Called by SessionEnd hook
+ * Schedules background condensation of a session and reports a basic session summary.
+ *
+ * Calls the session-stop handler with a minimal summary object; uses `args[0]` as the session ID when present and generates one otherwise. The summary contains empty defaults for tools used, tasks completed, and files modified.
+ *
+ * @param args - Hook arguments where `args[0]`, if provided, is the session ID
  */
 export async function handleCondenseSession(args: string[]): Promise<void> {
   const sessionId = args[0] || generateSessionId();
@@ -168,8 +197,11 @@ export async function handleCondenseSession(args: string[]): Promise<void> {
 }
 
 /**
- * Handler: can chitty evaluate subagent
- * Called by SubagentStop hook
+ * Report a subagent's outcome to the system when a subagent stops.
+ *
+ * Interprets `args` as [agentType, successFlag, ...messageParts] where `agentType` defaults to `"general"`, `successFlag` is `"success"` or `"true"` to indicate success, and remaining parts are joined into the outcome message; forwards an approach (sequential with no steps) and the outcome to `onSubagentStop`.
+ *
+ * @param args - Array interpreted as [agentType?, successFlag?, ...outcomeMessageParts]
  */
 export async function handleEvaluateSubagent(args: string[]): Promise<void> {
   const agentType = args[0] || "general";
@@ -182,8 +214,9 @@ export async function handleEvaluateSubagent(args: string[]): Promise<void> {
 }
 
 /**
- * Handler: can chitty synthesize-context
- * Called by PreCompact hook
+ * Determines whether foreground compaction should be prevented by requesting background synthesis using the given context size and threshold.
+ *
+ * @param args - Arguments array where `args[0]` is the context size (parsed as an integer, defaults to 10000) and `args[1]` is the threshold (parsed as an integer, defaults to 50000)
  */
 export async function handleSynthesizeContext(args: string[]): Promise<void> {
   const contextSize = parseInt(args[0]) || 10000;
@@ -197,8 +230,11 @@ export async function handleSynthesizeContext(args: string[]): Promise<void> {
 }
 
 /**
- * Handler: can chitty log-tool pre/post
- * Called by PreToolUse and PostToolUse hooks for event logging
+ * Send a non-blocking log event for a tool pre-use or post-use hook.
+ *
+ * For a "post" event, determines success (`true` if `status` is `"success"`, `"true"`, or omitted) and includes it in the logged record; for a "pre" event, no success flag is recorded. The function returns immediately on error after logging to console to avoid disrupting execution.
+ *
+ * @param args - Hook arguments: [eventType, toolName?, status?, ...rest]. `eventType` should be `"pre"` or `"post"`. `toolName` is the tool identifier (defaults to `"unknown"`). `status` (optional) is used for success determination for post events. Remaining elements are included as payload. 
  */
 export async function handleLogTool(args: string[]): Promise<void> {
   try {
@@ -227,6 +263,11 @@ export async function handleLogTool(args: string[]): Promise<void> {
  */
 const COUNTER_FILE = join(homedir(), ".chittycan", "hooks", "event-counter.json");
 
+/**
+ * Retrieve the persisted event count from the hooks counter file.
+ *
+ * @returns The stored event count, or 0 if the counter file is missing or cannot be read or parsed.
+ */
 function getEventCount(): number {
   try {
     if (existsSync(COUNTER_FILE)) {
@@ -237,6 +278,12 @@ function getEventCount(): number {
   return 0;
 }
 
+/**
+ * Persist the current event count for hooks to the user hooks counter file.
+ *
+ * @param count - The numeric event count to persist; will be stored alongside an ISO timestamp under the hooks counter file.
+ * Note: I/O errors are swallowed and the function will fail silently if persistence is not possible.
+ */
 function setEventCount(count: number): void {
   try {
     const dir = join(homedir(), ".chittycan", "hooks");
@@ -245,6 +292,12 @@ function setEventCount(count: number): void {
   } catch {}
 }
 
+/**
+ * Increments the persisted event counter and records a reflection trigger event every 20th invocation.
+ *
+ * The function updates an on-disk event counter and, when the counter is divisible by 20, appends a
+ * `reflection_trigger` session event with the current count and timestamp.
+ */
 async function maybeRunReflection(): Promise<void> {
   const count = getEventCount() + 1;
   setEventCount(count);
@@ -258,6 +311,16 @@ async function maybeRunReflection(): Promise<void> {
   }
 }
 
+/**
+ * Appends a single JSON-formatted event record to the persistent session log.
+ *
+ * Writes a line containing `{"type": <type>, ...<data>}` to the file
+ * `~/.chittycan/hooks/sessions.jsonl`, creating the hooks directory if needed.
+ * Any filesystem errors are silently ignored.
+ *
+ * @param type - A short identifier for the event (e.g., "reflection", "tool_use")
+ * @param data - Additional event fields to merge into the logged record
+ */
 function logSessionEvent(type: string, data: any): void {
   try {
     const sessionsLog = join(homedir(), ".chittycan", "hooks", "sessions.jsonl");
@@ -268,14 +331,18 @@ function logSessionEvent(type: string, data: any): void {
 }
 
 /**
- * Helper: Generate session ID
+ * Creates a unique session identifier for tracking sessions.
+ *
+ * @returns A session identifier string containing a timestamp and a short random suffix, prefixed with "session-".
  */
 function generateSessionId(): string {
   return `session-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 }
 
 /**
- * Helper: Get git branch
+ * Retrieve the current Git branch name for the repository in the current working directory.
+ *
+ * @returns The branch name as a string, or `undefined` if the branch cannot be determined (e.g., not a Git repo or command failure).
  */
 async function getGitBranch(): Promise<string | undefined> {
   try {
