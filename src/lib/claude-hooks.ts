@@ -26,13 +26,12 @@ const LEARNING_LOG = join(HOOK_LOGS_DIR, "learning.jsonl");
 const NOTION_SYNC_STATE = join(HOOK_LOGS_DIR, "notion-sync.json");
 
 /**
- * Hook: PreToolUse - Learn from tool usage patterns
- * Triggered: Before Claude Code uses a tool
+ * Record pre-tool usage context for learning and remote logging.
  *
- * Learns:
- * - Which tools are used together
- * - Tool usage sequences
- * - Context when tools are invoked
+ * Logs a non-blocking "tool_pre" event to the remote logger and appends a local learning event containing a timestamp, the tool name, a hash of the provided `args`, and the current working directory; persists the DNA vault if present.
+ *
+ * @param toolName - The name of the tool about to be invoked
+ * @param args - The tool invocation arguments; sensitive parts are hashed before being recorded
  */
 export async function onPreToolUse(toolName: string, args: any): Promise<void> {
   // Log to database (async, non-blocking)
@@ -61,13 +60,15 @@ export async function onPreToolUse(toolName: string, args: any): Promise<void> {
 }
 
 /**
- * Hook: PostToolUse - Learn from outcomes and improve
- * Triggered: After Claude Code completes a tool use
+ * Process a completed tool invocation to record outcome, learn from its result, and update stored workflows.
  *
- * Learns:
- * - Success/failure patterns
- * - Tool effectiveness
- * - Better argument combinations
+ * Logs the tool outcome for remote telemetry and local learning, appends a learning event to the local log, and
+ * adds a derived workflow to the DNA vault when a pattern is extracted.
+ *
+ * @param toolName - Name of the tool that was executed
+ * @param args - The arguments passed to the tool (sensitive parts will be hashed for storage)
+ * @param result - The tool's result or output (sensitive parts will be hashed for storage)
+ * @param success - Whether the tool invocation completed successfully
  */
 export async function onPostToolUse(
   toolName: string,
@@ -107,13 +108,16 @@ export async function onPostToolUse(
 }
 
 /**
- * Hook: Notification - Review and learn from notifications
- * Triggered: When Claude Code shows a notification
+ * Record a notification as a learning event and surface recurring notifications.
  *
- * Learns:
- * - Common error patterns
- * - Warning triggers
- * - User responses to notifications
+ * Creates and appends a privacy-preserving learning event (timestamp, type,
+ * hashed message, optional hashed user response) to the local learning log.
+ * If the same notification text appears repeatedly, prints a short suggestion
+ * to the user about addressing the recurring issue.
+ *
+ * @param type - Notification severity: `"info"`, `"warning"`, or `"error"`
+ * @param message - The notification text (message content is hashed before logging)
+ * @param userResponse - Optional user reply or action (hashed before logging)
  */
 export async function onNotification(
   type: "info" | "warning" | "error",
@@ -143,13 +147,9 @@ export async function onNotification(
 }
 
 /**
- * Hook: UserPromptSubmit - Evaluate for preferences and DNA
- * Triggered: When user submits a prompt to Claude
+ * Analyze a submitted user prompt for preference signals and contextual patterns, record a learning event, and persist any discovered preferences into the DNA vault.
  *
- * Learns:
- * - User communication patterns
- * - Frequently requested tasks
- * - Preference signals
+ * The function hashes the prompt for privacy, logs a prompt analysis entry and a short enhancement record, and merges any inferred preferences into `dna.preferences` before saving.
  */
 export async function onUserPromptSubmit(prompt: string, context: any): Promise<void> {
   const vault = DNAVault.getInstance();
@@ -189,13 +189,10 @@ export async function onUserPromptSubmit(prompt: string, context: any): Promise<
 }
 
 /**
- * Hook: SessionStart - Update Notion tracker and discover tools
- * Triggered: When Claude Code session starts
+ * Record a session start: update the Notion project tracker, discover MCP tools and their combinations, and append session context to the DNA vault.
  *
- * Actions:
- * - Update Notion ChittyCan project tracker
- * - Discover available MCP tools
- * - Generate new tool combinations
+ * @param sessionId - Unique identifier for the session
+ * @param metadata - Session metadata; may include `cwd`, `gitBranch`, `claudeVersion`, and optional `files` (active files list)
  */
 export async function onSessionStart(sessionId: string, metadata: any): Promise<void> {
   const session = {
@@ -246,13 +243,10 @@ export async function onSessionStart(sessionId: string, metadata: any): Promise<
 }
 
 /**
- * Hook: Stop/SessionEnd - Update tracker and print session info
- * Triggered: When Claude Code session stops
+ * Finalize a session: log the stop event, update the Notion tracker, show a recap to the user, and schedule background condensation of the session context.
  *
- * Actions:
- * - Update Notion tracker with session results
- * - Print session summary for user recall
- * - Condense session in background for perpetual context
+ * @param sessionId - The unique identifier for the session
+ * @param summary - An object summarizing the session; may include `toolsUsed` (string[]), `tasksCompleted` (number), and `filesModified` (string[])
  */
 export async function onSessionStop(sessionId: string, summary: any): Promise<void> {
   const session = {
@@ -280,13 +274,14 @@ export async function onSessionStop(sessionId: string, summary: any): Promise<vo
 }
 
 /**
- * Hook: SubagentStop - Evaluate approach and outcomes
- * Triggered: When a subagent (like Explore agent) completes
+ * Record a subagent run, evaluate its outcome for improvements (such as parallelization), and persist successful patterns into the DNA vault.
  *
- * Learns:
- * - Which subagent strategies work best
- * - When to use parallel subagents
- * - Outcome quality patterns
+ * Creates and appends a privacy-preserving learning event (approach/outcome hashed), logs a reflection produced by evaluation, may print a parallelization suggestion when applicable, and, if `success` is true, saves a new workflow describing the subagent pattern into the DNA vault.
+ *
+ * @param agentType - The subagent's type or name
+ * @param approach - The executed approach/plan object (will be hashed for storage)
+ * @param outcome - The observed outcome object (will be hashed for storage)
+ * @param success - Whether the subagent run was successful
  */
 export async function onSubagentStop(
   agentType: string,
@@ -348,13 +343,14 @@ export async function onSubagentStop(
 }
 
 /**
- * Hook: PreCompact - Condense session in background
- * Triggered: Before Claude compacts context (to prevent interruption)
+ * Initiates background synthesis of the current context to avoid blocking foreground compaction.
  *
- * Actions:
- * - Ingest and synthesize context in background
- * - Remove need for foreground compacting
- * - Extend session perpetually without interruption
+ * Starts an asynchronous, non-blocking context synthesis task so the caller can skip immediate
+ * foreground compaction and continue without interruption.
+ *
+ * @param contextSize - The current context size (e.g., token count or bytes) to be synthesized
+ * @param threshold - The compaction threshold that would normally trigger foreground compaction
+ * @returns `false` to indicate that foreground compaction should not be performed now
  */
 export async function onPreCompact(contextSize: number, threshold: number): Promise<boolean> {
   console.log(`\n🧠 ChittyCan: Background context synthesis starting...`);
@@ -376,8 +372,12 @@ export async function onPreCompact(contextSize: number, threshold: number): Prom
 }
 
 /**
- * Update session tracker (Neon database + optional Notion)
- * Uses Neon HTTP API to avoid ESM/CJS issues
+ * Record a session event to the project tracker, preferring the Neon remote and falling back to local sync state.
+ *
+ * Attempts to persist `session_start` or `session_end` information to a Neon-backed sessions store via the Neon HTTP API; if the remote update is unavailable or fails, the event is queued in the local Notion sync state for later synchronization.
+ *
+ * @param eventType - Either `"session_start"` or `"session_end"`, indicating the lifecycle event to record
+ * @param data - Event payload containing session metadata (e.g., `sessionId`, `metadata.cwd`, `metadata.gitBranch`) to persist or enqueue
  */
 export async function updateNotionTracker(eventType: string, data: any): Promise<void> {
   const config = loadConfig();
@@ -437,8 +437,16 @@ export async function updateNotionTracker(eventType: string, data: any): Promise
 }
 
 /**
- * Log tool event to database using Neon HTTP API
- * Uses fetch instead of pg driver to avoid ESM/CJS issues
+ * Record a tool usage event to the Neon-backed events table, falling back to the local learning log.
+ *
+ * Attempts to insert a sanitized event record into the `chittycan_events` table via the Neon HTTP API.
+ * If a Neon remote connection is not configured or the remote insert fails, the function appends the event
+ * (including error context when applicable) to the local learning log as a resilient fallback.
+ *
+ * @param eventType - Either `"tool_pre"` for pre-use events or `"tool_post"` for post-use events
+ * @param toolName - The name of the tool being logged
+ * @param success - Optional flag indicating whether the tool operation succeeded
+ * @param eventData - Optional additional event payload; sensitive parts will be hashed or sanitized before logging
  */
 export async function logToolEvent(
   eventType: "tool_pre" | "tool_post",
@@ -478,8 +486,12 @@ export async function logToolEvent(
 }
 
 /**
- * Execute SQL query via Neon HTTP API
- * Converts postgres connection string to HTTP endpoint
+ * Send a SQL query to a Neon database via its HTTP /sql endpoint.
+ *
+ * @param connectionString - PostgreSQL-style connection string used to locate and authenticate the Neon project (e.g. `postgres://user:pass@host/database?...`)
+ * @param query - The SQL query to execute
+ * @param params - Positional parameters for parameterized SQL (will be sent in the request body)
+ * @returns An object with `ok: true` and the parsed response in `data` on success, or `ok: false` and an `error` message on failure
  */
 async function neonHttpQuery(
   connectionString: string,
@@ -517,7 +529,10 @@ async function neonHttpQuery(
 }
 
 /**
- * Sanitize event data to remove sensitive information
+ * Produce a privacy-preserving summary of an event payload.
+ *
+ * @param data - The original event payload potentially containing sensitive fields
+ * @returns An object with `hasArgs` (whether `args` was present), `argsHash` (SHA-256 hash of `args` or `null`), and `resultType` (the JavaScript type of `result` or `null`)
  */
 function sanitizeEventData(data: any): any {
   if (!data) return {};
@@ -531,7 +546,14 @@ function sanitizeEventData(data: any): any {
 }
 
 /**
- * Discover available MCP tools from all config sources
+ * Aggregate MCP tool definitions from prioritized configuration sources.
+ *
+ * Searches project-level, volume-level, backup, and Claude Code global config files for MCP server entries,
+ * then supplements results with MCP/chitty remotes from the local chittycan configuration. Entries are
+ * deduplicated by name and normalized into objects containing `name`, `type`, `url`, `description`, and `enabled`.
+ * Malformed configs are ignored and errors are swallowed so the function returns any tools it could discover.
+ *
+ * @returns An array of tool descriptor objects with fields `name`, `type`, `url`, `description`, and `enabled`.
  */
 async function discoverMcpTools(): Promise<any[]> {
   const tools: any[] = [];
@@ -601,7 +623,10 @@ async function discoverMcpTools(): Promise<any[]> {
 }
 
 /**
- * Generate efficient tool combinations based on available tools
+ * Produce plausible tool usage combinations from the provided tools.
+ *
+ * @param tools - Array of available tool descriptors (objects with at least a `name` property)
+ * @returns An array of combination objects, each containing `tools` (tool names), `workflow` (short description), and `efficiency` (qualitative label)
  */
 function generateToolCombinations(tools: any[]): any[] {
   // Only return combinations if we have actual tools to combine
@@ -632,7 +657,12 @@ function generateToolCombinations(tools: any[]): any[] {
 }
 
 /**
- * Print session summary for user recall
+ * Display a compact, human-readable recap of a session to the console.
+ *
+ * @param session - Session object containing at least:
+ *   - `sessionId` (string)
+ *   - `startTime` and `endTime` (timestamps)
+ *   - `summary` with `toolsUsed` (string[]), `tasksCompleted`, and `filesModified` (array)
  */
 function printSessionSummary(session: any): void {
   console.log(`\n${"═".repeat(60)}`);
@@ -648,7 +678,14 @@ function printSessionSummary(session: any): void {
 }
 
 /**
- * Condense session in background for perpetual context
+ * Condenses a session summary into a privacy-protected context memory entry and persists it to the DNA vault.
+ *
+ * Creates a condensed record containing a timestamp, a hashed (privacy-preserving) summary, and extracted key learnings,
+ * then appends that record to the vault's context_memory (initializing a new DNA object if none exists) and saves the vault.
+ * Errors are caught and logged; the function will not throw on failure.
+ *
+ * @param sessionId - The identifier of the session being condensed
+ * @param summary - The session summary object to be condensed (may contain tools used, tasks completed, files changed, etc.)
  */
 async function condenseSession(sessionId: string, summary: any): Promise<void> {
   try {
@@ -705,7 +742,10 @@ async function condenseSession(sessionId: string, summary: any): Promise<void> {
 }
 
 /**
- * Synthesize context in background
+ * Simulates background synthesis and compaction of conversational context.
+ *
+ * @param contextSize - The size of the context to synthesize (for example, token count or character count)
+ * @returns An object containing `originalSize`, `compactSize` (estimated compacted size), and `synthesizedAt` (ISO timestamp)
  */
 async function synthesizeContextInBackground(contextSize: number): Promise<any> {
   // Simulate context synthesis
@@ -721,7 +761,17 @@ async function synthesizeContextInBackground(contextSize: number): Promise<any> 
 }
 
 /**
- * Evaluate subagent outcome for reflection
+ * Assess a subagent run and produce actionable recommendations about parallelization and outcome quality.
+ *
+ * @param agentType - The subagent's type or role (used for contextual interpretation).
+ * @param approach - The execution plan; expected to include `sequential` (boolean) and `steps` (array) to evaluate parallelization potential.
+ * @param outcome - The observed outcome or result payload from the subagent run.
+ * @param success - Whether the subagent run completed successfully.
+ * @returns An object with:
+ *  - `shouldParallelize`: `true` if the approach would likely benefit from parallel execution, `false` otherwise.
+ *  - `timeSavings`: Estimated time saved (in arbitrary units) if parallelized.
+ *  - `qualityScore`: A heuristic quality score (0..1) reflecting observed success.
+ *  - `recommendation`: A short human-readable recommendation based on the assessment.
  */
 function evaluateSubagentOutcome(
   agentType: string,
@@ -743,29 +793,60 @@ function evaluateSubagentOutcome(
 }
 
 /**
- * Helper functions
+ * Compute a SHA-256 hex digest of the JSON representation of the provided value.
+ *
+ * @param data - The value to hash; it will be stringified with JSON before hashing
+ * @returns The SHA-256 digest as a lowercase hexadecimal string
  */
 
 function hashSensitiveData(data: any): string {
   return createHash("sha256").update(JSON.stringify(data)).digest("hex");
 }
 
+/**
+ * Appends a learning event to the local learning log file for durable storage.
+ *
+ * Ensures the hooks log directory exists and writes the provided event as a newline-delimited JSON entry to the learning log.
+ *
+ * @param event - A serializable object representing the learning event to persist (will be JSON-stringified)
+ */
 function logLearningEvent(event: any): void {
   ensureDir(HOOK_LOGS_DIR);
   appendFileSync(LEARNING_LOG, JSON.stringify(event) + "\n");
 }
 
+/**
+ * Append a session event to the local session log.
+ *
+ * Writes a JSON line containing the event `type` merged with the provided `event` payload to the persistent session log.
+ *
+ * @param type - A short event category (for example `"start"`, `"stop"` or `"checkpoint"`) used to classify the session entry
+ * @param event - The event payload to record; its properties will be merged into the logged object
+ */
 function logSessionEvent(type: string, event: any): void {
   ensureDir(HOOK_LOGS_DIR);
   appendFileSync(SESSION_LOG, JSON.stringify({ type, ...event }) + "\n");
 }
 
+/**
+ * Append an enhancement event to the local enhancements JSONL log.
+ *
+ * Ensures the hooks log directory exists then writes `enhancement` as a newline-delimited JSON entry to enhancements.jsonl.
+ *
+ * @param enhancement - An object describing the enhancement event (metadata, timestamp, and any enhancement details) to persist to the log
+ */
 function logEnhancement(enhancement: any): void {
   const enhancementLog = join(HOOK_LOGS_DIR, "enhancements.jsonl");
   ensureDir(HOOK_LOGS_DIR);
   appendFileSync(enhancementLog, JSON.stringify(enhancement) + "\n");
 }
 
+/**
+ * Retrieve the most recent tool-usage events from the local learning log.
+ *
+ * @param limit - Maximum number of recent log lines to return
+ * @returns An array of parsed learning events filtered to `pre_tool_use` and `post_tool_use`; empty array if no log exists or no matching events
+ */
 function getRecentToolUsage(limit: number): any[] {
   if (!existsSync(LEARNING_LOG)) return [];
 
@@ -777,6 +858,12 @@ function getRecentToolUsage(limit: number): any[] {
     .filter(e => e.event === "pre_tool_use" || e.event === "post_tool_use");
 }
 
+/**
+ * Retrieve the most recent notification events from the local learning log.
+ *
+ * @param limit - Maximum number of recent log lines to examine
+ * @returns An array of parsed notification event objects (up to `limit`); returns an empty array if the learning log is missing or contains no notification events
+ */
 function getRecentNotifications(limit: number): any[] {
   if (!existsSync(LEARNING_LOG)) return [];
 
@@ -788,10 +875,20 @@ function getRecentNotifications(limit: number): any[] {
     .filter(e => e.event === "notification");
 }
 
+/**
+ * Determine whether the DNA contains any workflow whose name includes the specified tool name (case-insensitive).
+ *
+ * @returns `true` if a matching workflow name is found, `false` otherwise.
+ */
 function hasWorkflowForTool(dna: ChittyDNA, toolName: string): boolean {
   return dna.workflows.some(w => w.name.toLowerCase().includes(toolName.toLowerCase()));
 }
 
+/**
+ * Compute recent usage statistics for a given tool from the learning log.
+ *
+ * @returns An object where `successRate` is the fraction of recorded uses that were successful (0–1) and `totalUses` is the number of recent usages considered (up to 100)
+ */
 function calculateToolStats(toolName: string): { successRate: number; totalUses: number } {
   const usage = getRecentToolUsage(100).filter(u => u.tool === toolName);
   const successful = usage.filter(u => u.success).length;
@@ -802,6 +899,14 @@ function calculateToolStats(toolName: string): { successRate: number; totalUses:
   };
 }
 
+/**
+ * Construct a Workflow describing a successful tool invocation or return `null` for failures.
+ *
+ * @param toolName - The tool identifier used to name the workflow and tag it
+ * @param args - The tool invocation payload used to derive the workflow's semantic pattern and content hash
+ * @param success - If `false`, no workflow will be produced and the function returns `null`
+ * @returns A `Workflow` object representing the successful tool use (including a semantic `pattern`, hashed content, metadata, and privacy flags), or `null` if `success` is `false`
+ */
 function extractWorkflowFromToolUse(toolName: string, args: any, success: boolean): Workflow | null {
   if (!success) return null;
 
@@ -828,6 +933,11 @@ function extractWorkflowFromToolUse(toolName: string, args: any, success: boolea
   };
 }
 
+/**
+ * Infer the task type implied by a user's prompt.
+ *
+ * @returns One of `bug_fix`, `feature`, `refactor`, `testing`, `documentation`, or `general` indicating the inferred task category.
+ */
 function detectTaskType(prompt: string): string {
   const lower = prompt.toLowerCase();
 
@@ -840,6 +950,12 @@ function detectTaskType(prompt: string): string {
   return "general";
 }
 
+/**
+ * Infer explicit user preferences (language, programming style, framework) from a text prompt.
+ *
+ * @param prompt - The user prompt to analyze for preference hints
+ * @returns An object with detected preference keys (e.g., `language`, `programmingStyle`, `framework`) or `null` if none detected
+ */
 function extractPreferences(prompt: string): any | null {
   const preferences: any = {};
 
@@ -860,6 +976,12 @@ function extractPreferences(prompt: string): any | null {
   return Object.keys(preferences).length > 0 ? preferences : null;
 }
 
+/**
+ * Derives a short keyword pattern from a user prompt.
+ *
+ * @param prompt - The input prompt text to extract keywords from
+ * @returns Up to five significant keywords (longer than three characters) joined by spaces
+ */
 function extractPattern(prompt: string): string {
   // Extract key words (remove common words)
   const words = prompt.toLowerCase().split(/\s+/);
@@ -869,6 +991,12 @@ function extractPattern(prompt: string): string {
   return keywords.slice(0, 5).join(" ");
 }
 
+/**
+ * Extracts high-level learnings from a session summary for inclusion in condensed context.
+ *
+ * @param summary - Session summary object; expected to contain `toolsUsed` and `tasksCompleted`
+ * @returns An object with `toolsUsed` (array of tool identifiers), `tasksCompleted` (number), and `patterns` (extracted patterns; currently an empty array)
+ */
 function extractKeyLearnings(summary: any): any {
   return {
     toolsUsed: summary.toolsUsed || [],
@@ -877,6 +1005,13 @@ function extractKeyLearnings(summary: any): any {
   };
 }
 
+/**
+ * Load the local Notion sync state for pending updates and last synchronization time.
+ *
+ * Returns a default state with an empty `pendingUpdates` array and `lastSync` set to `null` when the state file is missing.
+ *
+ * @returns The Notion sync state object containing `pendingUpdates` (an array of pending update entries) and `lastSync` (a timestamp string or `null`)
+ */
 function loadNotionSyncState(): any {
   if (!existsSync(NOTION_SYNC_STATE)) {
     return { pendingUpdates: [], lastSync: null };
@@ -885,11 +1020,21 @@ function loadNotionSyncState(): any {
   return JSON.parse(readFileSync(NOTION_SYNC_STATE, "utf-8"));
 }
 
+/**
+ * Persist the local Notion synchronization state to durable storage.
+ *
+ * @param state - The Notion sync state object (for example `{ pendingUpdates: [...], lastSync?: string }`) to be saved
+ */
 function saveNotionSyncState(state: any): void {
   ensureDir(HOOK_LOGS_DIR);
   writeFileSync(NOTION_SYNC_STATE, JSON.stringify(state, null, 2));
 }
 
+/**
+ * Ensure the given directory exists by creating it (and parent directories) if missing.
+ *
+ * @param dir - Filesystem path of the directory to ensure exists
+ */
 function ensureDir(dir: string): void {
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
