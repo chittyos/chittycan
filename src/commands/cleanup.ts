@@ -273,14 +273,46 @@ async function scanProject(
         files: ["node_modules/"],
         sizeBytes: nodeModulesSize,
         canAutofix: true,
-        autofix: async () => {
-          fs.rmSync(nodeModulesPath, { recursive: true, force: true });
-          execSync("pnpm install --prefer-offline", { cwd, stdio: "inherit" });
-        },
+                autofix: async () => {
+                            // Detect package manager from lockfile or packageManager field
+                            const lockFiles: Record<string, string> = {
+                                          'pnpm-lock.yaml': 'pnpm install --prefer-offline',
+                                          'yarn.lock': 'yarn install --prefer-offline',
+                                          'package-lock.json': 'npm ci',
+                            };
+
+                            let installCmd: string | null = null;
+                            for (const [lockFile, cmd] of Object.entries(lockFiles)) {
+                                          if (fs.existsSync(path.join(cwd, lockFile))) {
+                                                          installCmd = cmd;
+                                                          break;
+                                          }
+                            }
+
+                            // Fallback: check packageManager field in package.json
+                            if (!installCmd) {
+                                          const pkgPath = path.join(cwd, 'package.json');
+                                          if (fs.existsSync(pkgPath)) {
+                                                          try {
+                                                                            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+                                                                            if (pkg.packageManager?.startsWith('pnpm')) installCmd = 'pnpm install --prefer-offline';
+                                                                            else if (pkg.packageManager?.startsWith('yarn')) installCmd = 'yarn install --prefer-offline';
+                                                                            else if (pkg.packageManager?.startsWith('npm')) installCmd = 'npm ci';
+                                                          } catch {}
+                                          }
+                            }
+
+                            if (!installCmd) {
+                                          console.log(chalk.yellow('Could not detect package manager, skipping node_modules cleanup'));
+                                          return;
+                            }
+
+                            fs.rmSync(nodeModulesPath, { recursive: true, force: true });
+                            execSync(installCmd, { cwd, stdio: "inherit" });
+                },
       });
     }
   }
-
   // 7. Build artifacts
   const buildDirs = ["dist", "build", ".next", ".nuxt", "coverage", ".turbo"];
   for (const dir of buildDirs) {
