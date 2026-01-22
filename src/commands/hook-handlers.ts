@@ -426,7 +426,7 @@ export async function handleAuthenticateContext(args: string[]): Promise<void> {
         console.log(`   \x1b[32m✓ New context minted: ${chittyId}\x1b[0m`);
       } else {
         // Fallback: create local-only binding
-        console.log(`   \x1b[33m⚠ Using local context (offline mode)\x1b[0m`);
+        console.log(`   \x1b[33m⚠ Session UNBOUND - ChittyConnect unreachable\x1b[0m`);
         context = createLocalContext(anchorHash, projectPath, workspace, supportType, organization);
       }
     }
@@ -455,7 +455,7 @@ export async function handleAuthenticateContext(args: string[]): Promise<void> {
       workspace: null,
       supportType: "development",
       organization: null,
-      trustScore: 0.5,
+      trustScore: 0,
       trustLevel: 0,
       ledgerHead: null,
       ledgerCount: 0,
@@ -714,20 +714,20 @@ function createLocalContext(
   organization: string | null
 ): ContextBinding {
   return {
-    chittyId: `LOCAL-${anchorHash.substring(0, 16)}`,
+    chittyId: "UNBOUND",
     contextId: "",
     anchorHash,
     projectPath,
     workspace,
     supportType,
     organization,
-    trustScore: 0.5,
+    trustScore: 0,
     trustLevel: 0,
     ledgerHead: null,
     ledgerCount: 0,
     sessionId: "",
     boundAt: "",
-    status: "local"
+    status: "unbound"
   };
 }
 

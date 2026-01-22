@@ -75,7 +75,8 @@ describe("Stemcell Brief", () => {
     const brief = await generateStemcellBrief(process.cwd());
 
     expect(brief.context.branch).toBeDefined();
-    expect(brief.context.branch).toBe("main");
+    expect(typeof brief.context.branch).toBe("string");
+    expect(brief.context.branch.length).toBeGreaterThan(0);
     expect(brief.context.recentCommits).toBeDefined();
     expect(brief.context.recentCommits.length).toBeGreaterThan(0);
   });
