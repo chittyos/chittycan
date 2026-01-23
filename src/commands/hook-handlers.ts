@@ -17,7 +17,7 @@ import {
   logToolEvent
 } from "../lib/claude-hooks.js";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync } from "fs";
-import { join, dirname, parse } from "path";
+import { join, dirname } from "path";
 import { homedir } from "os";
 import { createHash } from "crypto";
 
@@ -497,7 +497,6 @@ function computeAnchorHash(
  */
 function findWorkspaceRoot(projectPath: string): string | null {
   let current = projectPath;
-  const root = parse(current).root;
 
   while (true) {
     if (
@@ -510,7 +509,7 @@ function findWorkspaceRoot(projectPath: string): string | null {
     
     const parent = dirname(current);
     // Stop at filesystem root (works on both Unix and Windows)
-    if (parent === current || current === root) {
+    if (parent === current) {
       return null;
     }
     current = parent;
