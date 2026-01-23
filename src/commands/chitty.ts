@@ -99,7 +99,11 @@ export const CLI_CONFIGS = {
 export type SupportedCLI = keyof typeof CLI_CONFIGS;
 
 /**
- * Main chitty command handler
+ * Dispatches a top-level CLI invocation: handles built-in subcommands, custom workflows, and natural-language command processing.
+ *
+ * Accepts an array of tokens from the command line, resolves special commands (insights, analytics, suggestions, workflows, and hook-related commands), checks for and runs any matching custom workflow, or forwards the joined input to the natural-language handler which may interpret and execute a CLI command. Exits the process on unrecoverable errors or when user-driven cancellation/installation flows occur.
+ *
+ * @param args - The command-line arguments provided by the user (tokenized input excluding Node/runtime invocation). 
  */
 export async function chittyCommand(args: string[]): Promise<void> {
   if (args.length === 0) {
@@ -130,6 +134,27 @@ export async function chittyCommand(args: string[]): Promise<void> {
   // Special command: list workflows
   if (args[0] === "workflows" || args[0] === "list") {
     listWorkflows();
+    return;
+  }
+
+  // Special command: log-tool (called by Claude Code hooks)
+  if (args[0] === "log-tool") {
+    const { handleLogTool } = await import("./hook-handlers.js");
+    await handleLogTool(args.slice(1));
+    return;
+  }
+
+  // Special command: learn (called by PreToolUse hook)
+  if (args[0] === "learn") {
+    const { handleToolPre } = await import("./hook-handlers.js");
+    await handleToolPre(args.slice(1));
+    return;
+  }
+
+  // Special command: improve (called by PostToolUse hook)
+  if (args[0] === "improve") {
+    const { handleToolPost } = await import("./hook-handlers.js");
+    await handleToolPost(args.slice(1));
     return;
   }
 
