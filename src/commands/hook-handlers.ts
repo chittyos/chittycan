@@ -101,9 +101,10 @@ export async function handleNotification(args: string[]): Promise<void> {
 
   try {
     await onNotification(type, message);
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Silent fail - don't disrupt Claude Code
-    console.error("ChittyCan hook error (notification):", error?.message || error);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("ChittyCan hook error (notification):", message);
   }
 }
 
@@ -134,9 +135,10 @@ export async function handleLogEnhancement(args: string[]): Promise<void> {
   try {
     // Same as evaluate preferences, but focuses on enhancement logging
     await onUserPromptSubmit(prompt, context);
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Silent fail - don't disrupt Claude Code
-    console.error("ChittyCan hook error (log enhancement):", error?.message || error);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("ChittyCan hook error (log enhancement):", message);
   }
 }
 
@@ -158,9 +160,10 @@ export async function handleUpdateNotion(args: string[]): Promise<void> {
       try {
         const hooks = await import("../lib/claude-hooks.js");
         await (hooks as any).updateNotionTracker(eventType, data);
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Silent fail - don't disrupt Claude Code
-        console.error("ChittyCan hook error (update notion):", error?.message || error);
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("ChittyCan hook error (update notion):", message);
       }
     })();
   }, 100);
@@ -218,9 +221,10 @@ export async function handleCondenseSession(args: string[]): Promise<void> {
     (async () => {
       try {
         await onSessionStop(sessionId, summary);
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Silent fail - don't disrupt Claude Code
-        console.error("ChittyCan hook error (condense session):", error?.message || error);
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("ChittyCan hook error (condense session):", message);
       }
     })();
   }, 100);
