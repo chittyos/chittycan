@@ -68,10 +68,15 @@ export async function handleToolPost(args: string[]): Promise<void> {
  * @param args - Notification parts where the first element is the type (`"info" | "warning" | "error"`, defaults to `"info"`) and the remaining elements are joined into the notification message
  */
 export async function handleNotification(args: string[]): Promise<void> {
-  const type = (args[0] || "info") as "info" | "warning" | "error";
-  const message = args.slice(1).join(" ");
+  try {
+    const type = (args[0] || "info") as "info" | "warning" | "error";
+    const message = args.slice(1).join(" ");
 
-  await onNotification(type, message);
+    await onNotification(type, message);
+  } catch (error) {
+    // Silent fail - don't disrupt Claude Code
+    console.error("ChittyCan hook error (notification):", error);
+  }
 }
 
 /**
@@ -106,11 +111,16 @@ export async function handleEvaluatePreferences(args: string[]): Promise<void> {
  * @param args - Parts of the submitted prompt that will be joined with spaces into the final prompt
  */
 export async function handleLogEnhancement(args: string[]): Promise<void> {
-  const prompt = args.join(" ");
-  const context = { files: [], cwd: process.cwd() };
+  try {
+    const prompt = args.join(" ");
+    const context = { files: [], cwd: process.cwd() };
 
-  // Same as evaluate preferences, but focuses on enhancement logging
-  await onUserPromptSubmit(prompt, context);
+    // Same as evaluate preferences, but focuses on enhancement logging
+    await onUserPromptSubmit(prompt, context);
+  } catch (error) {
+    // Silent fail - don't disrupt Claude Code
+    console.error("ChittyCan hook error (log enhancement):", error);
+  }
 }
 
 /**
@@ -130,8 +140,12 @@ export async function handleUpdateNotion(args: string[]): Promise<void> {
 
   // Silently update in background
   setTimeout(async () => {
-    const hooks = await import("../lib/claude-hooks.js");
-    await (hooks as any).updateNotionTracker(eventType, data);
+    try {
+      const hooks = await import("../lib/claude-hooks.js");
+      await (hooks as any).updateNotionTracker(eventType, data);
+    } catch (error) {
+      console.error("ChittyCan hook error (update notion):", error);
+    }
   }, 100);
 }
 

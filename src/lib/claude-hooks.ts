@@ -268,8 +268,12 @@ export async function onSessionStop(sessionId: string, summary: any): Promise<vo
   printSessionSummary(session);
 
   // Condense session in background (async)
-  setTimeout(() => {
-    condenseSession(sessionId, summary);
+  setTimeout(async () => {
+    try {
+      await condenseSession(sessionId, summary);
+    } catch (error) {
+      console.error("ChittyCan hook error (condense session):", error);
+    }
   }, 100);
 }
 
