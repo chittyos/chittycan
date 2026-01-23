@@ -338,16 +338,6 @@ yargs(args)
           type: "string",
           choices: ["local", "volume", "kondo", "all"]
         })
-        .option("submit", {
-          describe: "Submit findings as GitHub issues",
-          type: "boolean",
-          default: false
-        })
-        .option("pr", {
-          describe: "Create PR for auto-fixable issues",
-          type: "boolean",
-          default: false
-        })
         .option("cwd", {
           describe: "Directory to clean",
           type: "string",
