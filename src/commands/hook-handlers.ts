@@ -697,8 +697,8 @@ async function createContextInDb(chittyId: string, anchors: {
 
     const row = result[0];
     
-    // Verify required fields exist
-    if (!row.id || !row.chitty_id || !row.anchor_hash) {
+    // Verify required fields exist (null/undefined only; allow 0 or empty strings)
+    if (row.id == null || row.chitty_id == null || row.anchor_hash == null) {
       throw new Error("Failed to insert context record - missing required fields");
     }
 
