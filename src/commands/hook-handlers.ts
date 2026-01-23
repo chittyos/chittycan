@@ -101,8 +101,10 @@ export async function handleNotification(args: string[]): Promise<void> {
 
   try {
     await onNotification(type, message);
-  } catch {
+  } catch (error: unknown) {
     // Silent fail - don't disrupt Claude Code
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("ChittyCan hook error (notification):", errorMessage);
   }
 }
 
@@ -133,8 +135,10 @@ export async function handleLogEnhancement(args: string[]): Promise<void> {
   try {
     // Same as evaluate preferences, but focuses on enhancement logging
     await onUserPromptSubmit(prompt, context);
-  } catch {
+  } catch (error: unknown) {
     // Silent fail - don't disrupt Claude Code
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("ChittyCan hook error (log enhancement):", message);
   }
 }
 
@@ -156,8 +160,10 @@ export async function handleUpdateNotion(args: string[]): Promise<void> {
       try {
         const hooks = await import("../lib/claude-hooks.js");
         await (hooks as any).updateNotionTracker(eventType, data);
-      } catch {
+      } catch (error: unknown) {
         // Silent fail - don't disrupt Claude Code
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("ChittyCan hook error (update notion):", message);
       }
     })();
   }, 100);
@@ -215,8 +221,10 @@ export async function handleCondenseSession(args: string[]): Promise<void> {
     (async () => {
       try {
         await onSessionStop(sessionId, summary);
-      } catch {
+      } catch (error: unknown) {
         // Silent fail - don't disrupt Claude Code
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("ChittyCan hook error (condense session):", message);
       }
     })();
   }, 100);
@@ -537,7 +545,10 @@ function detectOrganization(projectPath: string): string | null {
  */
 async function resolveContextFromDb(anchorHash: string): Promise<ContextBinding | null> {
   try {
-    if (!CHITTYCANON_DB_URL) return null;
+    if (!CHITTYCANON_DB_URL) {
+      console.error("   \x1b[33mCHITTYCANON_DB_URL not configured - skipping database lookup\x1b[0m");
+      return null;
+    }
 
     // Use Neon serverless driver
     const { neon } = await import("@neondatabase/serverless");
@@ -649,7 +660,14 @@ async function createContextInDb(chittyId: string, anchors: {
 }): Promise<ContextBinding> {
   try {
     if (!CHITTYCANON_DB_URL) {
-      throw new Error("CHITTYCANON_DB_URL not configured");
+      console.error("   \x1b[33mCHITTYCANON_DB_URL not configured - cannot create context in database\x1b[0m");
+      return createLocalContext(
+        anchors.anchorHash,
+        anchors.projectPath,
+        anchors.workspace,
+        anchors.supportType,
+        anchors.organization
+      );
     }
 
     const { neon } = await import("@neondatabase/serverless");
