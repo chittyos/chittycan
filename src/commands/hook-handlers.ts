@@ -235,13 +235,18 @@ export async function handleCondenseSession(args: string[]): Promise<void> {
  * Called by SubagentStop hook
  */
 export async function handleEvaluateSubagent(args: string[]): Promise<void> {
-  const agentType = args[0] || "general";
-  const success = args[1] === "success" || args[1] === "true";
+  try {
+    const agentType = args[0] || "general";
+    const success = args[1] === "success" || args[1] === "true";
 
-  const approach = { sequential: true, steps: [] };
-  const outcome = { result: args.slice(2).join(" ") };
+    const approach = { sequential: true, steps: [] };
+    const outcome = { result: args.slice(2).join(" ") };
 
-  await onSubagentStop(agentType, approach, outcome, success);
+    await onSubagentStop(agentType, approach, outcome, success);
+  } catch (error) {
+    // Silent fail - don't disrupt Claude Code
+    console.error("ChittyCan hook error (evaluate subagent):", error);
+  }
 }
 
 /**
@@ -249,13 +254,18 @@ export async function handleEvaluateSubagent(args: string[]): Promise<void> {
  * Called by PreCompact hook
  */
 export async function handleSynthesizeContext(args: string[]): Promise<void> {
-  const contextSize = parseInt(args[0]) || 10000;
-  const threshold = parseInt(args[1]) || 50000;
+  try {
+    const contextSize = parseInt(args[0]) || 10000;
+    const threshold = parseInt(args[1]) || 50000;
 
-  const shouldPreventCompact = await onPreCompact(contextSize, threshold);
+    const shouldPreventCompact = await onPreCompact(contextSize, threshold);
 
-  if (shouldPreventCompact) {
-    console.log("Background synthesis active - foreground compact prevented");
+    if (shouldPreventCompact) {
+      console.log("Background synthesis active - foreground compact prevented");
+    }
+  } catch (error) {
+    // Silent fail - don't disrupt Claude Code
+    console.error("ChittyCan hook error (synthesize context):", error);
   }
 }
 
