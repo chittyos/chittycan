@@ -715,10 +715,10 @@ async function createContextInDb(chittyId: string, anchors: {
       workspace: row.workspace as string | null,
       supportType: row.support_type as string,
       organization: row.organization as string | null,
-      trustScore: parseFloat(String(row.trust_score ?? 0)),
-      trustLevel: parseInt(String(row.trust_level ?? 0)),
+      trustScore: parseFloat(row.trust_score ?? '0'),
+      trustLevel: parseInt(row.trust_level ?? '0'),
       ledgerHead: row.ledger_head as string | null,
-      ledgerCount: parseInt(String(row.ledger_count ?? 0)),
+      ledgerCount: parseInt(row.ledger_count ?? '0'),
       sessionId: "",
       boundAt: "",
       status: row.status as string
