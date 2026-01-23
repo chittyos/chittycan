@@ -14,7 +14,7 @@
 
 import fs from "fs";
 import path from "path";
-import { execSync } from "child_process";
+import { execSync, execFileSync } from "child_process";
 import inquirer from "inquirer";
 import chalk from "chalk";
 import ora from "ora";
@@ -351,7 +351,28 @@ async function scanProject(
           files: ignoredFiles.slice(0, 10),
           sizeBytes: size,
           canAutofix: true,
-          autofix: async () => { execSync("git clean -fdX", { cwd, stdio: "inherit" }); },
+          autofix: async () => {
+            // Preview what will be deleted
+            console.log(chalk.yellow("\n⚠️  Preview of files to be deleted:"));
+            const preview = execSync("git clean -ndX", { cwd, encoding: "utf-8" });
+            console.log(preview);
+            
+            // Prompt for confirmation
+            const { confirmed } = await inquirer.prompt([
+              {
+                type: "confirm",
+                name: "confirmed",
+                message: "Delete these git-ignored files?",
+                default: false,
+              },
+            ]);
+            
+            if (confirmed) {
+              execSync("git clean -fdX", { cwd, stdio: "inherit" });
+            } else {
+              console.log(chalk.yellow("Cleanup cancelled."));
+            }
+          },
         });
       }
     }
@@ -906,7 +927,7 @@ function findEnvFilesInGit(cwd: string): string[] {
   return envFiles.filter((f) => {
     try {
       const rel = path.relative(cwd, f);
-      execSync(`git ls-files --error-unmatch "${rel}"`, { cwd, stdio: "ignore" });
+      execFileSync("git", ["ls-files", "--error-unmatch", rel], { cwd, stdio: "ignore" });
       return true;
     } catch {
       return false;
