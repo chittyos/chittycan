@@ -588,10 +588,10 @@ async function resolveContextFromDb(anchorHash: string): Promise<ContextBinding 
       workspace: row.workspace as string | null,
       supportType: row.support_type as string,
       organization: row.organization as string | null,
-      trustScore: parseFloat(row.trust_score as string),
-      trustLevel: parseInt(row.trust_level as string),
+      trustScore: parseFloat(row.trust_score ?? '0'),
+      trustLevel: parseInt(row.trust_level ?? '0'),
       ledgerHead: row.ledger_head as string | null,
-      ledgerCount: parseInt(row.ledger_count as string),
+      ledgerCount: parseInt(row.ledger_count ?? '0'),
       sessionId: "",
       boundAt: "",
       status: row.status as string
