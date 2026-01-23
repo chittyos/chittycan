@@ -17,7 +17,7 @@ import {
   logToolEvent
 } from "../lib/claude-hooks.js";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, parse } from "path";
 import { homedir } from "os";
 import { createHash } from "crypto";
 
@@ -489,8 +489,11 @@ function computeAnchorHash(
  */
 function findWorkspaceRoot(projectPath: string): string | null {
   let current = projectPath;
+  let previous = "";
 
-  while (current !== "/") {
+  // Keep traversing until we reach the root directory
+  // This works cross-platform: "/" on Unix/Linux/macOS, "C:\" on Windows, etc.
+  while (current !== previous) {
     if (
       existsSync(join(current, "pnpm-workspace.yaml")) ||
       existsSync(join(current, "lerna.json")) ||
@@ -498,6 +501,7 @@ function findWorkspaceRoot(projectPath: string): string | null {
     ) {
       return current;
     }
+    previous = current;
     current = dirname(current);
   }
   return null;
