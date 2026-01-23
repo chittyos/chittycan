@@ -190,14 +190,19 @@ export async function handleUpdateNotion(args: string[]): Promise<void> {
  * Generates a session ID and calls `onSessionStart` with an object containing the current working directory, the detected Git branch (if any), and a `claudeVersion` placeholder.
  */
 export async function handleDiscoverMcpTools(): Promise<void> {
-  const sessionId = generateSessionId();
-  const metadata = {
-    cwd: process.cwd(),
-    gitBranch: await getGitBranch(),
-    claudeVersion: "unknown"
-  };
+  try {
+    const sessionId = generateSessionId();
+    const metadata = {
+      cwd: process.cwd(),
+      gitBranch: await getGitBranch(),
+      claudeVersion: "unknown"
+    };
 
-  await onSessionStart(sessionId, metadata);
+    await onSessionStart(sessionId, metadata);
+  } catch (error) {
+    // Silent fail - don't disrupt Claude Code
+    console.error("ChittyCan hook error (discover mcp-tools):", error);
+  }
 }
 
 /**
