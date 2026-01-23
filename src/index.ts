@@ -31,6 +31,14 @@ import {
   revokeDNACommand,
   restoreDNACommand
 } from "./commands/dna.js";
+import {
+  sessionCreateCommand,
+  sessionValidateCommand,
+  sessionInspectCommand,
+  sessionEndCommand,
+  sessionListCommand,
+  sessionAddGeneCommand
+} from "./commands/session-dna.js";
 import { complianceReportCommand } from "./commands/compliance.js";
 import {
   analyticsCommand,
@@ -40,6 +48,18 @@ import {
   growthCommand
 } from "./commands/grow.js";
 import { cleanup } from "./commands/cleanup.js";
+import {
+  proposeListCommand,
+  proposeGenerateCommand,
+  proposePreviewCommand,
+  proposeAcceptCommand,
+  proposeRejectCommand,
+  progressCommand,
+  progressAnalyzeCommand,
+  synthesizeCommand,
+  synthesizeAnalyzeCommand,
+  synthesizePatternsCommand
+} from "./commands/learning.js";
 
 // Load plugins early
 const config = (await import("./lib/config.js")).loadConfig();
@@ -520,7 +540,7 @@ yargs(args)
   )
   .command(
     "dna",
-    "Manage your ChittyDNA (ownership, portability, attribution)",
+    "Manage your ChittyDNA (ownership, portability, attribution, session governance)",
     (yargs) =>
       yargs
         .command(
@@ -605,6 +625,164 @@ yargs(args)
           async () => {
             await revokeDNACommand();
           }
+        )
+        .command(
+          "session",
+          "Session DNA governance (roles, scopes, lifecycle)",
+          (yargs) =>
+            yargs
+              .command(
+                "create",
+                "Create a new session DNA strand",
+                (yargs) =>
+                  yargs
+                    .option("project", {
+                      type: "string",
+                      description: "Project ID"
+                    })
+                    .option("purpose", {
+                      type: "string",
+                      description: "Session purpose"
+                    })
+                    .option("roles", {
+                      type: "array",
+                      description: "Allowed roles"
+                    })
+                    .option("scopes", {
+                      type: "array",
+                      description: "Consent scopes"
+                    })
+                    .option("ttl", {
+                      type: "number",
+                      description: "Session TTL in hours",
+                      default: 24
+                    })
+                    .option("parent", {
+                      type: "string",
+                      description: "Parent ChittyID"
+                    })
+                    .option("no-interactive", {
+                      type: "boolean",
+                      description: "Disable interactive prompts"
+                    }),
+                async (argv) => {
+                  await sessionCreateCommand({
+                    project: argv.project as string | undefined,
+                    purpose: argv.purpose as string | undefined,
+                    roles: argv.roles as string[] | undefined,
+                    scopes: argv.scopes as string[] | undefined,
+                    ttl: argv.ttl as number,
+                    parent: argv.parent as string | undefined,
+                    interactive: !argv["no-interactive"]
+                  });
+                }
+              )
+              .command(
+                "validate <dna-id>",
+                "Validate a session DNA strand",
+                (yargs) =>
+                  yargs.positional("dna-id", {
+                    describe: "DNA strand ID",
+                    type: "string",
+                    demandOption: true
+                  }),
+                async (argv) => {
+                  await sessionValidateCommand(argv["dna-id"] as string);
+                }
+              )
+              .command(
+                "inspect <dna-id>",
+                "Inspect a session DNA strand",
+                (yargs) =>
+                  yargs
+                    .positional("dna-id", {
+                      describe: "DNA strand ID",
+                      type: "string",
+                      demandOption: true
+                    })
+                    .option("json", {
+                      type: "boolean",
+                      description: "Output as JSON"
+                    }),
+                async (argv) => {
+                  await sessionInspectCommand(argv["dna-id"] as string, {
+                    json: argv.json as boolean
+                  });
+                }
+              )
+              .command(
+                "end <dna-id>",
+                "End a session DNA strand",
+                (yargs) =>
+                  yargs
+                    .positional("dna-id", {
+                      describe: "DNA strand ID",
+                      type: "string",
+                      demandOption: true
+                    })
+                    .option("reason", {
+                      type: "string",
+                      choices: ["completed", "cancelled", "timeout", "revoked", "error"],
+                      default: "completed",
+                      description: "End reason"
+                    }),
+                async (argv) => {
+                  await sessionEndCommand(argv["dna-id"] as string, {
+                    reason: argv.reason as "completed" | "cancelled" | "timeout" | "revoked" | "error"
+                  });
+                }
+              )
+              .command(
+                "list",
+                "List session DNA strands",
+                (yargs) =>
+                  yargs
+                    .option("limit", {
+                      type: "number",
+                      default: 10,
+                      description: "Number of strands to show"
+                    })
+                    .option("active", {
+                      type: "boolean",
+                      description: "Show only active sessions"
+                    }),
+                async (argv) => {
+                  await sessionListCommand({
+                    limit: argv.limit as number,
+                    active: argv.active as boolean | undefined
+                  });
+                }
+              )
+              .command(
+                "add-gene <dna-id>",
+                "Add a gene to an existing session strand",
+                (yargs) =>
+                  yargs
+                    .positional("dna-id", {
+                      describe: "DNA strand ID",
+                      type: "string",
+                      demandOption: true
+                    })
+                    .option("tag", {
+                      type: "string",
+                      demandOption: true,
+                      description: "Gene tag (e.g., context_expand, clean_room)"
+                    })
+                    .option("allele", {
+                      type: "string",
+                      demandOption: true,
+                      description: "Gene allele as JSON"
+                    }),
+                async (argv) => {
+                  await sessionAddGeneCommand(argv["dna-id"] as string, {
+                    tag: argv.tag as string,
+                    allele: argv.allele as string
+                  });
+                }
+              ),
+          () => {
+            yargs.showHelp();
+          }
         ),
     () => {
       yargs.showHelp();
@@ -673,6 +851,116 @@ yargs(args)
     () => {},
     () => {
       growthCommand();
+    }
+  )
+  .command(
+    "propose",
+    "Manage auto-generated skill/agent/plugin proposals",
+    (yargs) =>
+      yargs
+        .command(
+          "list",
+          "List pending proposals",
+          () => {},
+          async () => {
+            await proposeListCommand();
+          }
+        )
+        .command(
+          "generate",
+          "Generate new proposals from patterns",
+          () => {},
+          async () => {
+            await proposeGenerateCommand();
+          }
+        )
+        .command(
+          "preview <id>",
+          "Preview a proposal",
+          (yargs) =>
+            yargs.positional("id", {
+              describe: "Proposal ID",
+              type: "string",
+              demandOption: true
+            }),
+          async (argv) => {
+            await proposePreviewCommand(argv.id as string);
+          }
+        )
+        .command(
+          "accept <id>",
+          "Accept and generate from proposal",
+          (yargs) =>
+            yargs.positional("id", {
+              describe: "Proposal ID",
+              type: "string",
+              demandOption: true
+            }),
+          async (argv) => {
+            await proposeAcceptCommand(argv.id as string);
+          }
+        )
+        .command(
+          "reject <id>",
+          "Reject a proposal",
+          (yargs) =>
+            yargs.positional("id", {
+              describe: "Proposal ID",
+              type: "string",
+              demandOption: true
+            }),
+          async (argv) => {
+            await proposeRejectCommand(argv.id as string);
+          }
+        ),
+    () => {
+      yargs.showHelp();
+    }
+  )
+  .command(
+    "progress [cli]",
+    "View learning progress and skill levels",
+    (yargs) =>
+      yargs
+        .positional("cli", {
+          describe: "Specific CLI to show progress for",
+          type: "string"
+        })
+        .command(
+          "analyze",
+          "Analyze skill gaps and recommendations",
+          () => {},
+          async () => {
+            await progressAnalyzeCommand();
+          }
+        ),
+    async (argv) => {
+      await progressCommand(argv.cli as string | undefined);
+    }
+  )
+  .command(
+    "synthesize",
+    "Synthesize learning goals and patterns",
+    (yargs) =>
+      yargs
+        .command(
+          "analyze",
+          "Show goal clusters and overlaps",
+          () => {},
+          async () => {
+            await synthesizeAnalyzeCommand();
+          }
+        )
+        .command(
+          "patterns",
+          "Show cross-goal patterns",
+          () => {},
+          async () => {
+            await synthesizePatternsCommand();
+          }
+        ),
+    async () => {
+      await synthesizeCommand();
     }
   )
   .fail((msg, err, yargs) => {

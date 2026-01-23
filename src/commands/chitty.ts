@@ -158,6 +158,28 @@ export async function chittyCommand(args: string[]): Promise<void> {
     return;
   }
 
+  // Special command: authenticate-context (called by SessionStart hook)
+  if (args[0] === "authenticate-context") {
+    const { handleAuthenticateContext } = await import("./hook-handlers.js");
+    await handleAuthenticateContext(args.slice(1));
+    return;
+  }
+
+  // Special command: evaluate preferences (called by UserPromptSubmit hook)
+  if (args[0] === "evaluate" && args[1] === "preferences") {
+    const { handleEvaluatePreferences } = await import("./hook-handlers.js");
+    await handleEvaluatePreferences(args.slice(2));
+    return;
+  }
+
+  // Special command: update-notion (called by SessionStart/Stop hooks)
+  if (args[0] === "update-notion") {
+    const { handleUpdateNotion } = await import("./hook-handlers.js");
+    await handleUpdateNotion(args.slice(1));
+    return;
+  }
+
+
   // Join all args as natural language (no quotes needed!)
   const naturalLanguage = args.join(" ");
 
