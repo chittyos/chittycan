@@ -671,7 +671,7 @@ async function createContextInDb(chittyId: string, anchors: {
 
     // Check if INSERT returned a row
     if (result.length === 0) {
-      throw new Error("INSERT failed to return a row");
+      throw new Error("Failed to insert context record - no rows returned");
     }
 
     // Create initial DNA record
