@@ -17,7 +17,7 @@ import {
   logToolEvent
 } from "../lib/claude-hooks.js";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync } from "fs";
-import { join, dirname, parse } from "path";
+import { join, dirname } from "path";
 import { homedir } from "os";
 import { createHash } from "crypto";
 
