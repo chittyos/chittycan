@@ -565,7 +565,6 @@ function findWorkspaceRoot(projectPath: string): string | null {
     previous = current;
     current = dirname(current);
   }
-  return null;
 }
 
 /**
@@ -640,10 +639,10 @@ async function resolveContextFromDb(anchorHash: string): Promise<ContextBinding 
       workspace: row.workspace as string | null,
       supportType: row.support_type as string,
       organization: row.organization as string | null,
-      trustScore: parseFloat(row.trust_score as string),
-      trustLevel: parseInt(row.trust_level as string),
+      trustScore: parseFloat(row.trust_score ?? '0'),
+      trustLevel: parseInt(row.trust_level ?? '0'),
       ledgerHead: row.ledger_head as string | null,
-      ledgerCount: parseInt(row.ledger_count as string),
+      ledgerCount: parseInt(row.ledger_count ?? '0'),
       sessionId: "",
       boundAt: "",
       status: row.status as string
@@ -755,10 +754,16 @@ async function createContextInDb(chittyId: string, anchors: {
       throw new Error("Failed to insert context record - no rows returned");
     }
 
-    // Create initial DNA record
-    await sql`INSERT INTO context_dna (context_id) VALUES (${result[0].id})`;
-
     const row = result[0];
+    
+    // Verify required fields exist (null/undefined only; allow 0 or empty strings)
+    if (row.id == null || row.chitty_id == null || row.anchor_hash == null) {
+      throw new Error("Failed to insert context record - missing required fields");
+    }
+
+    // Create initial DNA record
+    await sql`INSERT INTO context_dna (context_id) VALUES (${row.id})`;
+
     return {
       chittyId: row.chitty_id as string,
       contextId: row.id as string,
@@ -767,10 +772,10 @@ async function createContextInDb(chittyId: string, anchors: {
       workspace: row.workspace as string | null,
       supportType: row.support_type as string,
       organization: row.organization as string | null,
-      trustScore: parseFloat(row.trust_score as string),
-      trustLevel: parseInt(row.trust_level as string),
+      trustScore: parseFloat(row.trust_score ?? '0'),
+      trustLevel: parseInt(row.trust_level ?? '0'),
       ledgerHead: row.ledger_head as string | null,
-      ledgerCount: parseInt(row.ledger_count as string),
+      ledgerCount: parseInt(row.ledger_count ?? '0'),
       sessionId: "",
       boundAt: "",
       status: row.status as string
