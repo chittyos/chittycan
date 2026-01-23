@@ -497,8 +497,11 @@ function computeAnchorHash(
  */
 function findWorkspaceRoot(projectPath: string): string | null {
   let current = projectPath;
+  let previous = "";
 
-  while (current !== "/") {
+  // Keep traversing until we reach the root directory
+  // This works cross-platform: "/" on Unix/Linux/macOS, "C:\" on Windows, etc.
+  while (current !== previous) {
     if (
       existsSync(join(current, "pnpm-workspace.yaml")) ||
       existsSync(join(current, "lerna.json")) ||
@@ -506,6 +509,7 @@ function findWorkspaceRoot(projectPath: string): string | null {
     ) {
       return current;
     }
+    previous = current;
     current = dirname(current);
   }
   return null;
