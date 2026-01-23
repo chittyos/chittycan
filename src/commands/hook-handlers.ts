@@ -103,8 +103,8 @@ export async function handleNotification(args: string[]): Promise<void> {
     await onNotification(type, message);
   } catch (error: unknown) {
     // Silent fail - don't disrupt Claude Code
-    const message = error instanceof Error ? error.message : String(error);
-    console.error("ChittyCan hook error (notification):", message);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("ChittyCan hook error (notification):", errorMessage);
   }
 }
 
