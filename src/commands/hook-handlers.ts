@@ -17,7 +17,7 @@ import {
   logToolEvent
 } from "../lib/claude-hooks.js";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, parse } from "path";
 import { homedir } from "os";
 import { createHash } from "crypto";
 
@@ -497,8 +497,9 @@ function computeAnchorHash(
  */
 function findWorkspaceRoot(projectPath: string): string | null {
   let current = projectPath;
+  const root = parse(current).root;
 
-  while (current !== "/") {
+  while (true) {
     if (
       existsSync(join(current, "pnpm-workspace.yaml")) ||
       existsSync(join(current, "lerna.json")) ||
@@ -506,9 +507,14 @@ function findWorkspaceRoot(projectPath: string): string | null {
     ) {
       return current;
     }
-    current = dirname(current);
+    
+    const parent = dirname(current);
+    // Stop at filesystem root (works on both Unix and Windows)
+    if (parent === current || current === root) {
+      return null;
+    }
+    current = parent;
   }
-  return null;
 }
 
 /**
@@ -692,10 +698,16 @@ async function createContextInDb(chittyId: string, anchors: {
       throw new Error("Failed to insert context record - no rows returned");
     }
 
-    // Create initial DNA record
-    await sql`INSERT INTO context_dna (context_id) VALUES (${result[0].id})`;
-
     const row = result[0];
+    
+    // Verify required fields exist
+    if (!row.id || !row.chitty_id || !row.anchor_hash) {
+      throw new Error("Failed to insert context record - missing required fields");
+    }
+
+    // Create initial DNA record
+    await sql`INSERT INTO context_dna (context_id) VALUES (${row.id})`;
+
     return {
       chittyId: row.chitty_id as string,
       contextId: row.id as string,
@@ -704,10 +716,10 @@ async function createContextInDb(chittyId: string, anchors: {
       workspace: row.workspace as string | null,
       supportType: row.support_type as string,
       organization: row.organization as string | null,
-      trustScore: parseFloat(row.trust_score as string),
-      trustLevel: parseInt(row.trust_level as string),
+      trustScore: parseFloat(String(row.trust_score ?? 0)),
+      trustLevel: parseInt(String(row.trust_level ?? 0)),
       ledgerHead: row.ledger_head as string | null,
-      ledgerCount: parseInt(row.ledger_count as string),
+      ledgerCount: parseInt(String(row.ledger_count ?? 0)),
       sessionId: "",
       boundAt: "",
       status: row.status as string
