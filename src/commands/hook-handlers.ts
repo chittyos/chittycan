@@ -669,10 +669,13 @@ async function createContextInDb(chittyId: string, anchors: {
                 ledger_head, ledger_count, status
     `;
 
-    // Create initial DNA record
-    if (result.length > 0) {
-      await sql`INSERT INTO context_dna (context_id) VALUES (${result[0].id})`;
+    // Check if INSERT returned a row
+    if (result.length === 0) {
+      throw new Error("Failed to insert context record - no rows returned");
     }
+
+    // Create initial DNA record
+    await sql`INSERT INTO context_dna (context_id) VALUES (${result[0].id})`;
 
     const row = result[0];
     return {
