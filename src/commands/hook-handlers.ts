@@ -174,14 +174,19 @@ export async function handleUpdateNotion(args: string[]): Promise<void> {
  * Called by SessionStart hook
  */
 export async function handleDiscoverMcpTools(): Promise<void> {
-  const sessionId = generateSessionId();
-  const metadata = {
-    cwd: process.cwd(),
-    gitBranch: await getGitBranch(),
-    claudeVersion: "unknown"
-  };
+  try {
+    const sessionId = generateSessionId();
+    const metadata = {
+      cwd: process.cwd(),
+      gitBranch: await getGitBranch(),
+      claudeVersion: "unknown"
+    };
 
-  await onSessionStart(sessionId, metadata);
+    await onSessionStart(sessionId, metadata);
+  } catch (error) {
+    // Silent fail - don't disrupt Claude Code
+    console.error("ChittyCan hook error (discover mcp-tools):", error);
+  }
 }
 
 /**
