@@ -674,27 +674,13 @@ async function mintChittyId(anchors: {
   const timeoutId = setTimeout(() => controller.abort(), 5000);
 
   try {
-    // Get API key from environment (provisioned via ChittyRegister approval)
-    const apiKey = process.env.CHITTYCONNECT_API_KEY || "chittycan-038355700e584d50986394a13dadda60";
-
-    // Route through ChittyConnect for proper authentication and context tracking
-    const response = await fetch("https://connect.chitty.cc/api/chittyid/mint", {
-      method: "POST",
+    // Call ChittyID directly - it routes to ChittyMint on the backend
+    // ChittyMint handles controlled minting with drand randomness and signing
+    const response = await fetch("https://id.chitty.cc/api/get-chittyid?for=context", {
+      method: "GET",
       headers: {
-        "Content-Type": "application/json",
-        "X-ChittyOS-API-Key": apiKey
+        "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        entity: "CONTEXT",
-        metadata: {
-          projectPath: anchors.projectPath,
-          workspace: anchors.workspace,
-          supportType: anchors.supportType,
-          organization: anchors.organization,
-          source: "chittycan-cli",
-          mintedAt: new Date().toISOString()
-        }
-      }),
       signal: controller.signal
     });
 
@@ -702,8 +688,8 @@ async function mintChittyId(anchors: {
 
     if (!response.ok) return null;
 
-    const result = await response.json() as { chittyId: string };
-    return result.chittyId;
+    const result = await response.json() as { success: boolean; chittyId: string };
+    return result.success ? result.chittyId : null;
   } catch (error: unknown) {
     clearTimeout(timeoutId);
     // AbortError or network failure - fall back gracefully
