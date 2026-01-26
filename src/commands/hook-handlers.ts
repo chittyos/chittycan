@@ -648,6 +648,7 @@ function findWorkspaceRoot(projectPath: string): string | null {
     previous = current;
     current = dirname(current);
   }
+  return null;
 }
 
 /**
