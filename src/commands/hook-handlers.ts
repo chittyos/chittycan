@@ -417,8 +417,76 @@ function generateSessionId(): string {
 // CONTEXT AUTHENTICATION
 // ============================================================================
 
-// Database URL from environment - no hardcoded fallback for security
-const CHITTYCANON_DB_URL = process.env.CHITTYCANON_DB_URL;
+import { loadConfig } from "../lib/config.js";
+
+/**
+ * Fetch database URL from ChittyConnect
+ * Routes through connect.chitty.cc which retrieves from 1Password
+ * Path format: /api/credentials/{vault}/{item}/{field}
+ */
+async function fetchChittyCanonDbUrl(): Promise<string | null> {
+  try {
+    const apiKey = process.env.CHITTYCONNECT_API_KEY || "chittycan-038355700e584d50986394a13dadda60";
+    const response = await fetch("https://connect.chitty.cc/api/credentials/infrastructure/neon/chittycanon_db_url", {
+      method: "GET",
+      headers: {
+        "X-ChittyOS-API-Key": apiKey
+      }
+    });
+
+    if (!response.ok) return null;
+
+    const result = await response.json() as { success: boolean; value: string };
+    return result.success ? result.value : null;
+  } catch {
+    return null;
+  }
+}
+
+// Cache for the DB URL (fetched once per session)
+let cachedDbUrl: string | null | undefined = undefined;
+
+async function getChittyCanonDbUrl(): Promise<string | null> {
+  if (cachedDbUrl !== undefined) {
+    return cachedDbUrl;
+  }
+
+  // Priority 1: Environment variable
+  if (process.env.CHITTYCANON_DB_URL) {
+    cachedDbUrl = process.env.CHITTYCANON_DB_URL;
+    return cachedDbUrl;
+  }
+
+  // Priority 2: ChittyConnect (which retrieves from 1Password)
+  cachedDbUrl = await fetchChittyCanonDbUrl();
+  if (cachedDbUrl) {
+    return cachedDbUrl;
+  }
+
+  // Priority 3: Local config file (ChittyCanon remote)
+  try {
+    const config = loadConfig();
+    const remotes = config.remotes || {};
+
+    // Look for ChittyCanon remote specifically
+    const chittyCanonRemote = Object.entries(remotes).find(
+      ([name, r]: [string, any]) =>
+        name.toLowerCase() === "chittycanon" &&
+        r.type === "neon" &&
+        r.connectionString
+    )?.[1] as any;
+
+    if (chittyCanonRemote?.connectionString) {
+      cachedDbUrl = chittyCanonRemote.connectionString as string;
+      return cachedDbUrl as string;
+    }
+  } catch {
+    // Config not available
+  }
+
+  cachedDbUrl = null;
+  return null;
+}
 
 const SESSION_BINDING_FILE = join(homedir(), ".claude", "chittycontext", "session_binding.json");
 
@@ -602,14 +670,15 @@ function detectOrganization(projectPath: string): string | null {
  */
 async function resolveContextFromDb(anchorHash: string): Promise<ContextBinding | null> {
   try {
-    if (!CHITTYCANON_DB_URL) {
-      console.error("   \x1b[33mCHITTYCANON_DB_URL not configured - skipping database lookup\x1b[0m");
+    const dbUrl = await getChittyCanonDbUrl();
+    if (!dbUrl) {
+      console.error("   \x1b[33mChittyConnect: ChittyCanon DB unavailable - skipping database lookup\x1b[0m");
       return null;
     }
 
     // Use Neon serverless driver
     const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(CHITTYCANON_DB_URL);
+    const sql = neon(dbUrl);
 
     const result = await sql`
       SELECT
@@ -708,8 +777,9 @@ async function createContextInDb(chittyId: string, anchors: {
   anchorHash: string;
 }): Promise<ContextBinding> {
   try {
-    if (!CHITTYCANON_DB_URL) {
-      console.error("   \x1b[33mCHITTYCANON_DB_URL not configured - cannot create context in database\x1b[0m");
+    const dbUrl = await getChittyCanonDbUrl();
+    if (!dbUrl) {
+      console.error("   \x1b[33mChittyConnect: ChittyCanon DB unavailable - cannot create context\x1b[0m");
       return createLocalContext(
         anchors.anchorHash,
         anchors.projectPath,
@@ -720,7 +790,7 @@ async function createContextInDb(chittyId: string, anchors: {
     }
 
     const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(CHITTYCANON_DB_URL);
+    const sql = neon(dbUrl);
 
     const result = await sql`
       INSERT INTO contexts (
