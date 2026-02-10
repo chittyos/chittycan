@@ -58,7 +58,7 @@
     "url": "https://github.com/chittyos/chittycan/issues"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^0.5.0",
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "@neondatabase/serverless": "^1.0.2",
     "@notionhq/client": "^2.2.14",
     "@octokit/rest": "^20.0.2",
