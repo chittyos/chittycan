@@ -90,7 +90,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Create badge
-        uses: schneegans/dynamic-badges-action@v1.6.0
+        uses: schneegans/dynamic-badges-action@v1.7.0
         with:
           auth: ${{ secrets.GIST_SECRET }}
           gistID: your-gist-id-here
