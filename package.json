@@ -67,7 +67,7 @@
     "fs-extra": "^11.3.2",
     "inquirer": "^9.2.12",
     "ora": "^9.0.0",
-    "yargs": "^17.7.2"
+    "yargs": "^18.0.0"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.7",
