@@ -1,0 +1,187 @@
+{
+  "dashboard": {
+    "title": "ChittyCan AI Gateway Metrics",
+    "tags": ["chittycan", "ai", "gateway"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Requests per Second",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "expr": "rate(chitty_requests_total[5m])",
+            "legendFormat": "{{model}} - {{tenant}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "reqps", "label": "Requests/sec" },
+          { "format": "short" }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Cache Hit Rate",
+        "type": "stat",
+        "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+        "targets": [
+          {
+            "expr": "avg(chitty_cache_hit_rate)",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "background",
+          "justifyMode": "center",
+          "textMode": "value_and_name"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 0.5, "color": "yellow" },
+                { "value": 0.8, "color": "green" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Total Cost (USD)",
+        "type": "stat",
+        "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+        "targets": [
+          {
+            "expr": "sum(chitty_cost_cents_total) / 100",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "P95 Latency by Model",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(chitty_request_duration_seconds_bucket[5m])) by (le, model))",
+            "legendFormat": "{{model}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "s", "label": "Latency (P95)" },
+          { "format": "short" }
+        ],
+        "alert": {
+          "name": "High P95 Latency",
+          "conditions": [
+            {
+              "evaluator": { "type": "gt", "params": [2] },
+              "query": { "params": ["A", "5m", "now"] }
+            }
+          ],
+          "frequency": "60s",
+          "handler": 1,
+          "message": "P95 latency > 2s"
+        }
+      },
+      {
+        "id": 5,
+        "title": "Cost by Model",
+        "type": "piechart",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "targets": [
+          {
+            "expr": "sum(chitty_cost_cents_total) by (model)",
+            "legendFormat": "{{model}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "displayLabels": ["name", "percent"],
+          "pieType": "donut",
+          "legend": {
+            "values": true,
+            "displayMode": "table",
+            "placement": "right"
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Fallback Events",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+        "targets": [
+          {
+            "expr": "rate(chitty_fallback_events_total[5m])",
+            "legendFormat": "{{from_model}} → {{to_model}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Budget Status by Tenant",
+        "type": "bargauge",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+        "targets": [
+          {
+            "expr": "sum(chitty_cost_cents_total) by (tenant) / 100",
+            "legendFormat": "{{tenant}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 90, "color": "yellow" },
+                { "value": 100, "color": "red" }
+              ]
+            },
+            "max": 100
+          }
+        }
+      },
+      {
+        "id": 8,
+        "title": "Request Distribution",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 24, "x": 0, "y": 24 },
+        "targets": [
+          {
+            "expr": "sum(chitty_requests_total) by (model)",
+            "legendFormat": "{{model}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "orientation": "horizontal",
+          "textMode": "value_and_name",
+          "colorMode": "value"
+        }
+      }
+    ]
+  }
+}

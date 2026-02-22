@@ -1,0 +1,100 @@
+name: OpenAI Parity Tests
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  parity-python:
+    name: Python Parity Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install openai
+
+      - name: Run Python parity tests
+        env:
+          CHITTYCAN_TOKEN: ${{ secrets.CHITTYCAN_TOKEN }}
+          OPENAI_API_BASE: https://connect.chitty.cc/v1
+        run: |
+          python3 tests/parity_py.py
+
+  parity-node:
+    name: Node.js Parity Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          npm install openai
+
+      - name: Run Node.js parity tests
+        env:
+          CHITTYCAN_TOKEN: ${{ secrets.CHITTYCAN_TOKEN }}
+          OPENAI_API_BASE: https://connect.chitty.cc/v1
+        run: |
+          node tests/parity_node.js
+
+  parity-local:
+    name: Local Ollama Tests
+    runs-on: ubuntu-latest
+    services:
+      ollama:
+        image: ollama/ollama:latest
+        ports:
+          - 11434:11434
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Pull Ollama model
+        run: |
+          docker exec ${{ job.services.ollama.id }} ollama pull llama3.1
+
+      - name: Install dependencies
+        run: |
+          pip install openai
+
+      - name: Run local tests
+        env:
+          OPENAI_API_KEY: dummy-key
+          OPENAI_API_BASE: http://localhost:11434/v1
+        run: |
+          python3 tests/parity_py.py
+
+  compatibility-badge:
+    name: Update Compatibility Badge
+    runs-on: ubuntu-latest
+    needs: [parity-python, parity-node]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Create badge
+        uses: schneegans/dynamic-badges-action@v1.6.0
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: your-gist-id-here
+          filename: chittycan-compatibility.json
+          label: OpenAI Compatible
+          message: passing
+          color: green

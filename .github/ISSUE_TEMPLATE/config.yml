@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 Discord Community
+    url: https://discord.gg/chittyos
+    about: Ask questions and get help from the community
+  - name: 📚 Documentation
+    url: https://github.com/chittycorp/chittycan#readme
+    about: Read the docs and guides
+  - name: 🔒 Security Issue
+    url: https://github.com/chittycorp/chittycan/security/advisories/new
+    about: Report a security vulnerability privately
