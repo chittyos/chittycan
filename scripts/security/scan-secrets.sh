@@ -20,6 +20,7 @@ scan_working_tree() {
 }
 
 scan_history() {
+  local revset="$1"
   local found=0
   while IFS= read -r commit; do
     if git grep -nEI "$REGEX" "$commit" -- . \
@@ -30,7 +31,7 @@ scan_history() {
       cat /tmp/chitty_secret_scan_hits
       found=1
     fi
-  done < <(git rev-list --all)
+  done < <(git rev-list $revset)
 
   rm -f /tmp/chitty_secret_scan_hits
 
@@ -47,10 +48,13 @@ case "$MODE" in
     scan_working_tree
     ;;
   --history)
-    scan_history
+    scan_history --branches
+    ;;
+  --history-all-refs)
+    scan_history --all
     ;;
   *)
-    echo "Usage: $0 [working-tree|--history]" >&2
+    echo "Usage: $0 [working-tree|--history|--history-all-refs]" >&2
     exit 2
     ;;
 esac
