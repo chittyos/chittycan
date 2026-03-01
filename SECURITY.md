@@ -138,6 +138,34 @@ const hash = crypto.createHash('sha256').update(token).digest('hex');
 const storedToken = token;  // Vulnerable if config leaked
 ```
 
+## Secret Exposure Response Checklist
+
+If a secret is exposed in code or git history, execute this sequence immediately:
+
+1. Identify and remove exposed material from the working tree.
+2. Scan current files and history:
+```bash
+npm run security:scan
+npm run security:scan:history
+```
+3. Purge exposed values from git history (maintainer operation):
+```bash
+# Requires git-filter-repo installed
+printf 'old_secret_value==>REDACTED' > /tmp/replacements.txt
+git filter-repo --replace-text /tmp/replacements.txt --force
+git push --force --all origin
+git push --force --tags origin
+```
+4. Rotate and revoke impacted credentials at the provider.
+5. Update GitHub/CI secrets and local runtime secrets.
+6. Invalidate sessions/tokens derived from the exposed credential.
+7. Re-run CI security gates and verify no secret-like matches remain.
+
+Rotation notes for this repository:
+- Rotate `CHITTYCONNECT_API_KEY` if exposure is suspected.
+- Rotate any GitHub Actions secret that may have been logged or committed.
+- Notify contributors to re-clone after history rewrite.
+
 ## Known Security Considerations
 
 ### Configuration File Security
