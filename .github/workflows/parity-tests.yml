@@ -11,7 +11,6 @@ jobs:
   parity-python:
     name: Python Parity Tests
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'pull_request' || secrets.CHITTYCAN_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -36,7 +35,6 @@ jobs:
   parity-node:
     name: Node.js Parity Tests
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'pull_request' || secrets.CHITTYCAN_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
 
