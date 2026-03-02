@@ -16,7 +16,7 @@
   ],
   "scripts": {
     "build": "tsc -p . && npm run copy:assets",
-    "copy:assets": "mkdir -p dist/zsh && cp src/zsh/snippets.zsh dist/zsh/",
+    "copy:assets": "node scripts/copy-assets.mjs",
     "dev": "tsc -p . --watch",
     "mcp": "node dist/mcp-server.js",
     "prepublishOnly": "npm run build && npm run test",
