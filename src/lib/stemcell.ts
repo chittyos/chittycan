@@ -137,21 +137,40 @@ export async function generateStemcellBrief(
 
   // Git context
   try {
-    brief.context.branch = execSync("git branch --show-current", {
+    let branch = execSync("git branch --show-current", {
       cwd: projectPath,
       encoding: "utf-8",
     }).trim();
+    if (!branch) {
+      branch = execSync("git rev-parse --abbrev-ref HEAD", {
+        cwd: projectPath,
+        encoding: "utf-8",
+      }).trim();
+    }
+    if (!branch || branch === "HEAD") {
+      branch = process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || "HEAD";
+    }
+    brief.context.branch = branch;
 
     brief.context.status = execSync("git status --short", {
       cwd: projectPath,
       encoding: "utf-8",
     }).trim();
 
-    const commits = execSync(`git log -${maxCommits} --oneline`, {
+    const commitsRaw = execSync(`git log -${maxCommits} --oneline`, {
       cwd: projectPath,
       encoding: "utf-8",
-    }).trim().split("\n");
-    brief.context.recentCommits = commits;
+    }).trim();
+    brief.context.recentCommits = commitsRaw ? commitsRaw.split("\n") : [];
+    if (brief.context.recentCommits.length === 0) {
+      const head = execSync("git rev-parse --short HEAD", {
+        cwd: projectPath,
+        encoding: "utf-8",
+      }).trim();
+      if (head) {
+        brief.context.recentCommits = [head];
+      }
+    }
 
     const modifiedFiles = execSync("git diff --name-only", {
       cwd: projectPath,
