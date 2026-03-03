@@ -9,12 +9,20 @@
  *   Proceed? [Y/n]
  */
 
+import fs from "fs";
 import { spawn, execSync } from "child_process";
 import chalk from "chalk";
-import inquirer from "inquirer";
 import { loadConfig } from "../lib/config.js";
 import { trackCommandUsage, getPersonalizedSuggestions, showUsageInsights } from "../lib/usage-tracker.js";
 import { findWorkflow, executeWorkflow, listWorkflows } from "../lib/custom-workflows.js";
+
+let inquirerPromise: Promise<any> | null = null;
+async function getInquirer(): Promise<any> {
+  if (!inquirerPromise) {
+    inquirerPromise = import("inquirer").then((mod) => mod.default);
+  }
+  return inquirerPromise;
+}
 
 /**
  * CLI tools and their remote requirements
@@ -106,6 +114,16 @@ export type SupportedCLI = keyof typeof CLI_CONFIGS;
  * @param args - The command-line arguments provided by the user (tokenized input excluding Node/runtime invocation). 
  */
 export async function chittyCommand(args: string[]): Promise<void> {
+  if (args[0] === "--help" || args[0] === "-h" || args[0] === "help") {
+    showHelp();
+    return;
+  }
+
+  if (args[0] === "--version" || args[0] === "-v" || args[0] === "version") {
+    console.log(getCliVersion());
+    return;
+  }
+
   if (args.length === 0) {
     showHelp();
     return;
@@ -262,6 +280,7 @@ async function handleNaturalLanguageCommand(naturalLanguage: string): Promise<vo
   }
 
   // Step 6: Confirm before executing
+  const inquirer = await getInquirer();
   const { proceed } = await inquirer.prompt([{
     type: "confirm",
     name: "proceed",
@@ -372,6 +391,7 @@ async function handleCLINotInstalled(cli: SupportedCLI): Promise<void> {
   });
   console.log();
 
+  const inquirer = await getInquirer();
   const { install } = await inquirer.prompt([{
     type: "confirm",
     name: "install",
@@ -415,6 +435,7 @@ async function handleMissingRemote(cli: SupportedCLI, cliConfig: any): Promise<v
     }
   );
 
+  const inquirer = await getInquirer();
   const { action } = await inquirer.prompt([{
     type: "list",
     name: "action",
@@ -734,4 +755,14 @@ function showHelp(): void {
   console.log();
   console.log(chalk.yellow("Note:") + chalk.dim(" Requires AI remote configured (run: can config)"));
   console.log();
+}
+
+function getCliVersion(): string {
+  try {
+    const pkgPath = new URL("../../package.json", import.meta.url);
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as { version?: string };
+    return pkg.version || "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
 }
