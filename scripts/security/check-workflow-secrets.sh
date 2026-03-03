@@ -20,7 +20,7 @@ while IFS= read -r file; do
       indent = match(line, /[^ ]/) - 1
       if (indent < 0) indent = 0
 
-      if (line ~ /^[[:space:]]*run:[[:space:]]*\|?[[:space:]]*$/) {
+      if (line ~ /^[[:space:]]*run:[[:space:]]*([|>][+-]?)?[[:space:]]*$/) {
         inrun = 1
         runIndent = indent
         next

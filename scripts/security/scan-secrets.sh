@@ -8,8 +8,11 @@ REGEX='(chittycan-[0-9a-f]{32}|ghp_[A-Za-z0-9]{36}|xox[baprs]-[A-Za-z0-9-]{10,48
 
 scan_working_tree() {
   if rg -n --pcre2 "$REGEX" \
+    --hidden \
+    --no-ignore-vcs \
     --glob '!docs/**' \
     --glob '!dist/**' \
+    --glob '!node_modules/**' \
     --glob '!.git/**' \
     .; then
     echo "\nSecret scan failed: potential secret-like content found in working tree." >&2
