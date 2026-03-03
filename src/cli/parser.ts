@@ -103,7 +103,7 @@ export function createCliParser(args: string[]) {
           listRemotes();
         }
       ),
-    () => {
+    (yargs) => {
       yargs.showHelp();
     }
   )
@@ -146,7 +146,7 @@ export function createCliParser(args: string[]) {
             nudgeQuiet();
           }
         ),
-    () => {
+    (yargs) => {
       yargs.showHelp();
     }
   )
@@ -212,7 +212,7 @@ export function createCliParser(args: string[]) {
             }
           }
         ),
-    () => {
+    (yargs) => {
       yargs.showHelp();
     }
   )
@@ -268,7 +268,7 @@ export function createCliParser(args: string[]) {
             await disableExtension(argv.name as string);
           }
         ),
-    () => {
+    (yargs) => {
       yargs.showHelp();
     }
   )
@@ -366,7 +366,7 @@ export function createCliParser(args: string[]) {
             syncStatus();
           }
         ),
-    () => {
+    (yargs) => {
       yargs.showHelp();
     }
   )
@@ -448,7 +448,7 @@ export function createCliParser(args: string[]) {
             await testMcpConnection(argv.name as string);
           }
         ),
-    () => {
+    (yargs) => {
       yargs.showHelp();
     }
   )
@@ -501,7 +501,7 @@ export function createCliParser(args: string[]) {
             await installMcpConfig();
           }
         ),
-    () => {
+    (yargs) => {
       yargs.showHelp();
     }
   )
@@ -747,11 +747,11 @@ export function createCliParser(args: string[]) {
                   });
                 }
               ),
-          () => {
+          (yargs) => {
             yargs.showHelp();
           }
         ),
-    () => {
+    (yargs) => {
       yargs.showHelp();
     }
   )
@@ -880,16 +880,16 @@ export function createCliParser(args: string[]) {
             await proposeRejectCommand(argv.id as string);
           }
         ),
-    () => {
+    (yargs) => {
       yargs.showHelp();
     }
   )
   .command(
-    "progress [cli]",
+    "progress",
     "View learning progress and skill levels",
     (yargs) =>
       yargs
-        .positional("cli", {
+        .option("cli", {
           describe: "Specific CLI to show progress for",
           type: "string"
         })
