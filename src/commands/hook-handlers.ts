@@ -441,7 +441,8 @@ import { loadConfig } from "../lib/config.js";
  */
 async function fetchChittyCanonDbUrl(): Promise<string | null> {
   try {
-    const apiKey = process.env.CHITTYCONNECT_API_KEY || "REDACTED_CHITTYCONNECT_API_KEY";
+    const apiKey = process.env.CHITTYCAN_TOKEN ?? process.env.CHITTYCONNECT_API_KEY;
+    if (!apiKey) return null;
     const response = await fetch("https://connect.chitty.cc/api/credentials/infrastructure/neon/chittycanon_db_url", {
       method: "GET",
       headers: {

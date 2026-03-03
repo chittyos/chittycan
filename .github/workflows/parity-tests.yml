@@ -21,12 +21,14 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install openai
+          pip install "openai>=2,<3"
 
       - name: Run Python parity tests
         env:
           CHITTYCAN_TOKEN: ${{ secrets.CHITTYCAN_TOKEN }}
           OPENAI_API_BASE: https://connect.chitty.cc/v1
+          OPENAI_TEST_CHAT_MODEL: gpt-4
+          OPENAI_TEST_EMBED_MODEL: text-embedding-3-small
         run: |
           python3 tests/parity_py.py
 
@@ -49,6 +51,8 @@ jobs:
         env:
           CHITTYCAN_TOKEN: ${{ secrets.CHITTYCAN_TOKEN }}
           OPENAI_API_BASE: https://connect.chitty.cc/v1
+          OPENAI_TEST_CHAT_MODEL: gpt-4
+          OPENAI_TEST_EMBED_MODEL: text-embedding-3-small
         run: |
           node tests/parity_node.js
 
@@ -74,12 +78,14 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install openai
+          pip install "openai>=2,<3"
 
       - name: Run local tests
         env:
           OPENAI_API_KEY: dummy-key
           OPENAI_API_BASE: http://localhost:11434/v1
+          OPENAI_TEST_CHAT_MODEL: llama3.1
+          SKIP_EMBEDDINGS: "1"
         run: |
           python3 tests/parity_py.py
 
