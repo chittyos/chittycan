@@ -6,7 +6,7 @@ This file provides guidance to Claude Code when working with the chittycan CLI.
 
 **chittycan** (`can`) is the ChittyOS ecosystem CLI — a yargs-based TypeScript CLI that integrates Notion, GitHub, Cloudflare, Neon, and AI services. It also exposes an MCP server for Claude Code integration.
 
-- **Package**: `chittycan` v0.5.x (MIT, published to npm)
+- **Package**: `chittycan` v0.5.x (published to npm)
 - **Entry**: `src/index.ts` → fast-path help/version, then lazy-loads `src/cli/parser.ts`
 - **Binary**: `can` (installed globally via `npm i -g chittycan`)
 - **MCP Server**: `src/mcp/server.ts` (run via `npm run mcp`)
@@ -28,7 +28,7 @@ npm run changeset      # create changeset entry
 
 ## Architecture
 
-```
+```text
 src/
 ├── index.ts              # Entry: fast-path --help/--version, then lazy-loads parser
 ├── cli/
