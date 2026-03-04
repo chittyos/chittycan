@@ -162,7 +162,7 @@ git push --force --tags origin
 7. Re-run CI security gates and verify no secret-like matches remain.
 
 Rotation notes for this repository:
-- Rotate `CHITTYCAN_TOKEN` if exposure is suspected (`CHITTYCONNECT_API_KEY` is legacy-compatible).
+- Rotate `CHITTYCAN_TOKEN` (primary) and all legacy fallback credentials: `CHITTYCONNECT_API_KEY`, `CHITTY_TOKEN`, `CHITTY_API_TOKEN`, `CHITTYCONNECT_TOKEN`.
 - Rotate any GitHub Actions secret that may have been logged or committed.
 - Notify contributors to re-clone after history rewrite.
 
