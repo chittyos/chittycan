@@ -103,7 +103,7 @@ export function createCliParser(args: string[]) {
           listRemotes();
         }
       ),
-    (yargs) => {
+    (yargs: any) => {
       yargs.showHelp();
     }
   )
@@ -146,7 +146,7 @@ export function createCliParser(args: string[]) {
             nudgeQuiet();
           }
         ),
-    (yargs) => {
+    (yargs: any) => {
       yargs.showHelp();
     }
   )
@@ -212,7 +212,7 @@ export function createCliParser(args: string[]) {
             }
           }
         ),
-    (yargs) => {
+    (yargs: any) => {
       yargs.showHelp();
     }
   )
@@ -268,7 +268,7 @@ export function createCliParser(args: string[]) {
             await disableExtension(argv.name as string);
           }
         ),
-    (yargs) => {
+    (yargs: any) => {
       yargs.showHelp();
     }
   )
@@ -366,7 +366,7 @@ export function createCliParser(args: string[]) {
             syncStatus();
           }
         ),
-    (yargs) => {
+    (yargs: any) => {
       yargs.showHelp();
     }
   )
@@ -448,7 +448,7 @@ export function createCliParser(args: string[]) {
             await testMcpConnection(argv.name as string);
           }
         ),
-    (yargs) => {
+    (yargs: any) => {
       yargs.showHelp();
     }
   )
@@ -501,7 +501,7 @@ export function createCliParser(args: string[]) {
             await installMcpConfig();
           }
         ),
-    (yargs) => {
+    (yargs: any) => {
       yargs.showHelp();
     }
   )
@@ -747,11 +747,11 @@ export function createCliParser(args: string[]) {
                   });
                 }
               ),
-          (yargs) => {
+          (yargs: any) => {
             yargs.showHelp();
           }
         ),
-    (yargs) => {
+    (yargs: any) => {
       yargs.showHelp();
     }
   )
@@ -880,7 +880,7 @@ export function createCliParser(args: string[]) {
             await proposeRejectCommand(argv.id as string);
           }
         ),
-    (yargs) => {
+    (yargs: any) => {
       yargs.showHelp();
     }
   )
@@ -930,7 +930,7 @@ export function createCliParser(args: string[]) {
       await synthesizeCommand();
     }
   )
-  .fail((msg, err, yargs) => {
+  .fail((msg: string | undefined, err: Error | undefined, yargs: any) => {
     // For errors, show help
     if (msg) console.error(msg);
     if (err) console.error(err);

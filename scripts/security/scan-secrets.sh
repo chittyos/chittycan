@@ -25,18 +25,19 @@ scan_working_tree() {
 scan_history() {
   local revset="$1"
   local found=0
+  local hits_file
+  hits_file="$(mktemp)"
+  trap 'rm -f "$hits_file"' RETURN
   while IFS= read -r commit; do
     if git grep -nEI "$REGEX" "$commit" -- . \
       ':(exclude)docs/**' \
       ':(exclude)dist/**' \
-      ':(exclude).git/**' >/tmp/chitty_secret_scan_hits 2>/dev/null; then
+      ':(exclude).git/**' >"$hits_file" 2>/dev/null; then
       echo "Potential secret-like content in commit: $commit"
-      cat /tmp/chitty_secret_scan_hits
+      cat "$hits_file"
       found=1
     fi
-  done < <(git rev-list $revset)
-
-  rm -f /tmp/chitty_secret_scan_hits
+  done < <(git rev-list "$revset")
 
   if [[ "$found" -ne 0 ]]; then
     echo "\nSecret scan failed: history contains potential secret-like content." >&2

@@ -110,16 +110,16 @@ async function testStreaming() {
 async function testErrorHandling() {
   console.log("\\n[4/4] Testing error handling...");
 
+  let threw = false;
   try {
     await client.chat.completions.create({
       model: "invalid-model-does-not-exist",
       messages: [{ role: "user", content: "test" }]
     });
-
-    throw new Error("error handling should have thrown exception");
   } catch {
-    // Expected failure path
+    threw = true;
   }
+  assertOk(threw, "error handling should have thrown exception");
 
   console.log("✓ Error handling OK");
 }

@@ -108,14 +108,15 @@ def test_streaming():
 def test_error_handling():
     print("\n[4/4] Testing error handling...")
 
+    threw = False
     try:
         client.chat.completions.create(
             model="invalid-model-does-not-exist",
             messages=[{"role": "user", "content": "test"}],
         )
-        raise AssertionError("error handling should have raised exception")
     except Exception:
-        pass
+        threw = True
+    assert_ok(threw, "error handling should have raised exception")
 
     print("✓ Error handling OK")
 

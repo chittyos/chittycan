@@ -16,7 +16,7 @@ import {
   onPreCompact,
   logToolEvent
 } from "../lib/claude-hooks.js";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, readdirSync } from "fs";
 import { join, dirname } from "path";
 import { homedir } from "os";
 import { createHash } from "crypto";
@@ -441,7 +441,9 @@ import { loadConfig } from "../lib/config.js";
  */
 async function fetchChittyCanonDbUrl(): Promise<string | null> {
   try {
-    const apiKey = process.env.CHITTYCAN_TOKEN ?? process.env.CHITTYCONNECT_API_KEY;
+    const apiKey =
+      process.env.CHITTYCAN_TOKEN?.trim() ||
+      process.env.CHITTYCONNECT_API_KEY?.trim();
     if (!apiKey) return null;
     const response = await fetch("https://connect.chitty.cc/api/credentials/infrastructure/neon/chittycanon_db_url", {
       method: "GET",
@@ -526,6 +528,14 @@ interface ContextBinding {
 /**
  * Handler: can chitty authenticate-context
  * Called by SessionStart hook to resolve and bind context
+ *
+ * Resolution order:
+ * 1. Check local identity files (~/.claude/chittycontext/entities/{id}/identity.json)
+ * 2. Query ChittyCanon database by anchor hash
+ * 3. Mint new ChittyID (always entity_type=P per canonical governance)
+ * 4. Fallback to local-only unbound context
+ *
+ * @canon: chittycanon://gov/governance#core-types — contexts are Person (P), not Thing (T)
  */
 export async function handleAuthenticateContext(args: string[]): Promise<void> {
   try {
@@ -542,14 +552,48 @@ export async function handleAuthenticateContext(args: string[]): Promise<void> {
     console.log(`   Project: ${projectPath}`);
     console.log(`   Anchor: ${anchorHash.substring(0, 16)}...`);
 
-    // Try to resolve existing context from database
-    let context = await resolveContextFromDb(anchorHash);
+    // Priority 1: Check for existing local identity with valid mintProof
+    const localIdentity = resolveLocalIdentity();
+    let context: ContextBinding | null = null;
+
+    if (localIdentity) {
+      console.log(`   \x1b[32m✓ Local identity found: ${localIdentity.chittyId}\x1b[0m`);
+      console.log(`   Entity type: ${localIdentity.entityType} (${localIdentity.canonicalTypeName})`);
+
+      // Try to resolve full context from DB using the known ChittyID
+      context = await resolveContextFromDb(anchorHash);
+
+      if (!context) {
+        // Local identity exists but no DB context for this anchor — create local binding
+        context = {
+          chittyId: localIdentity.chittyId,
+          contextId: "",
+          anchorHash,
+          projectPath,
+          workspace,
+          supportType,
+          organization,
+          trustScore: 0.5,
+          trustLevel: 0,
+          ledgerHead: null,
+          ledgerCount: 0,
+          sessionId: "",
+          boundAt: "",
+          status: "active"
+        };
+      }
+    }
+
+    // Priority 2: Try to resolve from database by anchor hash
+    if (!context) {
+      context = await resolveContextFromDb(anchorHash);
+    }
 
     if (context) {
       console.log(`   \x1b[32m✓ Context found: ${context.chittyId}\x1b[0m`);
       console.log(`   Trust: L${context.trustLevel} (${(context.trustScore * 100).toFixed(1)}%)`);
     } else {
-      // Request new ChittyID from service
+      // Priority 3: Mint new ChittyID (always entity_type=P)
       console.log(`   \x1b[33m⚠ No existing context, requesting ChittyID...\x1b[0m`);
 
       const chittyId = await mintChittyId({
@@ -570,7 +614,7 @@ export async function handleAuthenticateContext(args: string[]): Promise<void> {
         });
         console.log(`   \x1b[32m✓ New context minted: ${chittyId}\x1b[0m`);
       } else {
-        // Fallback: create local-only binding
+        // Priority 4: Fallback local-only binding
         console.log(`   \x1b[33m⚠ Session UNBOUND - ChittyConnect unreachable\x1b[0m`);
         context = createLocalContext(anchorHash, projectPath, workspace, supportType, organization);
       }
@@ -580,7 +624,8 @@ export async function handleAuthenticateContext(args: string[]): Promise<void> {
     const binding: ContextBinding = {
       ...context,
       sessionId,
-      boundAt: new Date().toISOString()
+      boundAt: new Date().toISOString(),
+      status: "active"
     };
 
     // Write binding to file for statusline and other tools
@@ -608,6 +653,59 @@ export async function handleAuthenticateContext(args: string[]): Promise<void> {
       boundAt: new Date().toISOString(),
       status: "offline"
     });
+  }
+}
+
+/**
+ * Resolve existing local identity from ~/.claude/chittycontext/entities/{id}/identity.json
+ *
+ * Scans entity directories for identity files with valid mintProof.
+ * Prefers Person (P) type identities over Thing (T) types.
+ *
+ * @canon: chittycanon://gov/governance#core-types
+ */
+function resolveLocalIdentity(): {
+  chittyId: string;
+  entityType: string;
+  canonicalTypeName: string;
+} | null {
+  const entitiesDir = join(homedir(), ".claude", "chittycontext", "entities");
+  if (!existsSync(entitiesDir)) return null;
+
+  try {
+    const entries: string[] = readdirSync(entitiesDir);
+
+    // Collect all valid identities, preferring P (Person) types
+    let bestIdentity: { chittyId: string; entityType: string; canonicalTypeName: string } | null = null;
+
+    for (const entry of entries) {
+      const identityFile = join(entitiesDir, entry, "identity.json");
+      if (!existsSync(identityFile)) continue;
+
+      try {
+        const identity = JSON.parse(readFileSync(identityFile, "utf-8"));
+
+        // Must have valid mintProof
+        if (!identity.mintProof?.signature) continue;
+
+        const candidate = {
+          chittyId: identity.chittyId as string,
+          entityType: (identity.entityType || identity.canonicalType || "P") as string,
+          canonicalTypeName: (identity.canonicalTypeName || "Person") as string
+        };
+
+        // Prefer P (Person) over T (Thing) — canonical governance rule
+        if (!bestIdentity || candidate.entityType === "P") {
+          bestIdentity = candidate;
+        }
+      } catch {
+        // Skip malformed identity files
+      }
+    }
+
+    return bestIdentity;
+  } catch {
+    return null;
   }
 }
 
