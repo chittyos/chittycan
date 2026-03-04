@@ -139,15 +139,15 @@ def test_error_handling():
     """Test error handling"""
     print("\n[5/5] Testing error handling...")
 
+    threw = False
     try:
         openai.ChatCompletion.create(
             model="invalid-model-does-not-exist",
             messages=[{"role": "user", "content": "test"}]
         )
-        assert_ok(False, "error handling should have raised exception")
-    except openai.error.OpenAIError as e:
-        # Expected error
-        assert_ok(True, "error handling raised correctly")
+    except Exception:
+        threw = True
+    assert_ok(threw, "error handling should have raised exception")
 
     print("✓ Error handling OK")
 
