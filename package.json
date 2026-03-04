@@ -61,7 +61,7 @@
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@neondatabase/serverless": "^1.0.2",
     "@notionhq/client": "^5.11.1",
-    "@octokit/rest": "^20.0.2",
+    "@octokit/rest": "^22.0.1",
     "chalk": "^5.6.2",
     "chittycan": "^0.3.0",
     "fs-extra": "^11.3.2",
