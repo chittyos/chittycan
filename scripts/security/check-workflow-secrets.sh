@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env bash 
 set -euo pipefail
 
 # 1) Forbid GitHub secrets context outside workflow files.
