@@ -133,17 +133,16 @@ async function testStreaming() {
 async function testErrorHandling() {
   console.log("\n[4/4] Testing error handling...");
 
+  let threw = false;
   try {
     await client.chat.completions.create({
       model: "invalid-model-does-not-exist",
       messages: [{ role: "user", content: "test" }]
     });
-
-    assertOk(false, "error handling should have thrown exception");
-  } catch (error) {
-    // Expected error
-    assertOk(error instanceof Error, "error handling threw correct error type");
+  } catch {
+    threw = true;
   }
+  assertOk(threw, "error handling should have thrown exception");
 
   console.log("✓ Error handling OK");
 }
