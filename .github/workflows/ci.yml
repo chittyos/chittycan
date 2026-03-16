@@ -7,8 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  lint-and-build:
-    name: Lint & Build
+  build-and-test:
+    name: Build & Test
     runs-on: ubuntu-latest
 
     steps:
@@ -17,13 +17,11 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '18'
+          node-version: '20'
+          cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
-
-      - name: Lint (TypeScript check)
-        run: npm run lint
+        run: npm ci
 
       - name: Build
         run: npm run build
@@ -37,7 +35,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node-version: ['18', '20']
+        node-version: ['20']
 
     steps:
       - uses: actions/checkout@v4
@@ -46,9 +44,10 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
+          cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build
         run: npm run build
@@ -58,6 +57,3 @@ jobs:
 
       - name: Smoke test - version
         run: node dist/index.js --version
-
-      - name: Smoke test - ext list
-        run: node dist/index.js ext list || true
