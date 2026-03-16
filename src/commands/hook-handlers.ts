@@ -559,6 +559,12 @@ export async function handleAuthenticateContext(args: string[]): Promise<void> {
       });
 
       if (chittyId) {
+        // @canon: chittycanon://gov/governance#core-types — contexts are Person (P), not Thing (T)
+        const entityTypeSegment = chittyId.split("-")[4];
+        if (entityTypeSegment && entityTypeSegment !== "P") {
+          console.log(`   \x1b[33m⚠ Entity type mismatch: got '${entityTypeSegment}', expected 'P' (Person)\x1b[0m`);
+        }
+
         // Create context in database
         context = await createContextInDb(chittyId, {
           projectPath,
@@ -816,7 +822,8 @@ async function createContextInDb(chittyId: string, anchors: {
         anchors.projectPath,
         anchors.workspace,
         anchors.supportType,
-        anchors.organization
+        anchors.organization,
+        chittyId
       );
     }
 
@@ -843,7 +850,7 @@ async function createContextInDb(chittyId: string, anchors: {
     }
 
     const row = result[0];
-    
+
     // Verify required fields exist (null/undefined only; allow 0 or empty strings)
     if (row.id == null || row.chitty_id == null || row.anchor_hash == null) {
       throw new Error("Failed to insert context record - missing required fields");
@@ -875,7 +882,8 @@ async function createContextInDb(chittyId: string, anchors: {
       anchors.projectPath,
       anchors.workspace,
       anchors.supportType,
-      anchors.organization
+      anchors.organization,
+      chittyId
     );
   }
 }
@@ -888,10 +896,11 @@ function createLocalContext(
   projectPath: string,
   workspace: string | null,
   supportType: string,
-  organization: string | null
+  organization: string | null,
+  chittyId: string = "UNBOUND"
 ): ContextBinding {
   return {
-    chittyId: "UNBOUND",
+    chittyId,
     contextId: "",
     anchorHash,
     projectPath,
