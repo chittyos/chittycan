@@ -1,5 +1,4 @@
 title = "chittycan gitleaks config"
 
-[allowlist]
-  description = "Allowlisted patterns"
-  paths = []
+[extend]
+  useDefault = true
