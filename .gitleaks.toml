@@ -2,3 +2,11 @@ title = "chittycan gitleaks config"
 
 [extend]
   useDefault = true
+
+[[allowlists]]
+  description = "Documentation and config files with example/placeholder tokens"
+  paths = [
+    '''\.claude/mcp\.json''',
+    '''INTEGRATION_STATUS\.md''',
+    '''SECURITY\.md''',
+  ]
