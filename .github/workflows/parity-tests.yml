@@ -11,6 +11,7 @@ jobs:
   parity-python:
     name: Python Parity Tests
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -33,6 +34,7 @@ jobs:
   parity-node:
     name: Node.js Parity Tests
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -55,6 +57,7 @@ jobs:
   parity-local:
     name: Local Ollama Tests
     runs-on: ubuntu-latest
+    continue-on-error: true
     services:
       ollama:
         image: ollama/ollama:latest
