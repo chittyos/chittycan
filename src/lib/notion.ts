@@ -9,8 +9,11 @@ export class NotionClient {
   }
 
   async queryDatabase(databaseId: string): Promise<NotionAction[]> {
-    const response = await this.client.databases.query({
-      database_id: databaseId
+    // databases.query was removed in @notionhq/client v5; use REST request
+    const response = await (this.client as any).request({
+      path: `databases/${databaseId}/query`,
+      method: "POST",
+      body: {},
     });
 
     return response.results.map((page: any) => this.pageToAction(page));

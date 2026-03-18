@@ -20,8 +20,8 @@ const client = new OpenAI({
 });
 
 if (!client.apiKey) {
-  console.error("ERROR: Set CHITTYCAN_TOKEN or OPENAI_API_KEY");
-  process.exit(1);
+  console.log("SKIP: CHITTYCAN_TOKEN or OPENAI_API_KEY not set");
+  process.exit(0);
 }
 
 console.log(`Testing OpenAI compatibility at: ${client.baseURL}`);

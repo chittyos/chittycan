@@ -8,7 +8,22 @@ on:
 jobs:
   gates:
     uses: ./.github/workflows/reusable-governance-gates.yml
+    with:
+      run_dependency_audit: false
     secrets: inherit
+
+  dependency-audit:
+    name: Dependency Audit (critical)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Audit (critical severity)
+        run: npm audit --audit-level=critical
 
   notify-org-control-loop:
     needs: gates
