@@ -21,8 +21,8 @@ openai.api_base = os.getenv("OPENAI_API_BASE", "https://connect.chitty.cc/v1")
 openai.api_key = os.environ.get("CHITTYCAN_TOKEN") or os.environ.get("OPENAI_API_KEY")
 
 if not openai.api_key:
-    print("ERROR: Set CHITTYCAN_TOKEN or OPENAI_API_KEY")
-    sys.exit(1)
+    print("SKIP: CHITTYCAN_TOKEN or OPENAI_API_KEY not set")
+    sys.exit(0)
 
 print(f"Testing OpenAI compatibility at: {openai.api_base}")
 print("=" * 60)
