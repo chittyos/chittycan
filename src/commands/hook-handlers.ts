@@ -560,20 +560,28 @@ export async function handleAuthenticateContext(args: string[]): Promise<void> {
 
       if (chittyId) {
         // @canon: chittycanon://gov/governance#core-types — contexts are Person (P), not Thing (T)
-        const entityTypeSegment = chittyId.split("-")[4];
-        if (entityTypeSegment && entityTypeSegment !== "P") {
-          console.log(`   \x1b[33m⚠ Entity type mismatch: got '${entityTypeSegment}', expected 'P' (Person)\x1b[0m`);
+        // ChittyMint currently ignores entity_type param; correct it client-side until upstream fix
+        const segments = chittyId.split("-");
+        let correctedId = chittyId;
+        if (segments[4] && segments[4] !== "P") {
+          console.log(`   \x1b[33m⚠ Entity type mismatch: got '${segments[4]}', expected 'P' (Person) — correcting\x1b[0m`);
+          segments[4] = "P";
+          // Recalculate checksum (mod-97 of all segments except last)
+          const baseSegments = segments.slice(0, -1);
+          const numericStr = baseSegments.join("").replace(/[A-Z]/g, (c) => String(c.charCodeAt(0) - 55));
+          const checksum = String(98n - (BigInt(numericStr) % 97n)).padStart(2, "0");
+          segments[segments.length - 1] = checksum;
+          correctedId = segments.join("-");
         }
-
         // Create context in database
-        context = await createContextInDb(chittyId, {
+        context = await createContextInDb(correctedId, {
           projectPath,
           workspace,
           supportType,
           organization,
           anchorHash
         });
-        console.log(`   \x1b[32m✓ New context minted: ${chittyId}\x1b[0m`);
+        console.log(`   \x1b[32m✓ New context minted: ${correctedId}\x1b[0m`);
       } else {
         // Fallback: create local-only binding
         console.log(`   \x1b[33m⚠ Session UNBOUND - ChittyConnect unreachable\x1b[0m`);
@@ -897,10 +905,10 @@ function createLocalContext(
   workspace: string | null,
   supportType: string,
   organization: string | null,
-  chittyId: string = "UNBOUND"
+  mintedChittyId?: string
 ): ContextBinding {
   return {
-    chittyId,
+    chittyId: mintedChittyId || "UNBOUND",
     contextId: "",
     anchorHash,
     projectPath,
