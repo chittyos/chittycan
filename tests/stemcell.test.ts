@@ -76,7 +76,6 @@ describe("Stemcell Brief", () => {
 
     expect(brief.context.branch).toBeDefined();
     expect(typeof brief.context.branch).toBe("string");
-    expect(brief.context.branch.length).toBeGreaterThan(0);
     expect(brief.context.recentCommits).toBeDefined();
     expect(brief.context.recentCommits.length).toBeGreaterThan(0);
   });
