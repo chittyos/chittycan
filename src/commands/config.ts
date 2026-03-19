@@ -77,9 +77,10 @@ export async function configMenu(): Promise<void> {
       await editRemote(cfg, name);
     } else if (mappedAction === "rename") {
       const { newName } = await inquirer.prompt([{
+        type: "input",
         name: "newName",
         message: "New name",
-        validate: (v: string) => v ? true : "Required"
+        validate: (v: unknown) => v ? true : "Required"
       }]);
       cfg.remotes[newName] = cfg.remotes[name];
       delete cfg.remotes[name];
@@ -161,9 +162,9 @@ async function addNotionRemote(cfg: Config, type: string): Promise<void> {
 
   if (type === "notion-database") {
     const views = await inquirer.prompt([
-      { name: "actions", message: "Actions view URL (optional)", default: "" },
-      { name: "aiUsage", message: "AI usage view URL (optional)", default: "" },
-      { name: "projects", message: "Projects view URL (optional)", default: "" }
+      { type: "input", name: "actions", message: "Actions view URL (optional)", default: "" },
+      { type: "input", name: "aiUsage", message: "AI usage view URL (optional)", default: "" },
+      { type: "input", name: "projects", message: "Projects view URL (optional)", default: "" }
     ]);
 
     Object.entries(views).forEach(([k, v]) => {
@@ -493,7 +494,7 @@ async function addAiRemote(cfg: Config): Promise<void> {
 
   const remote: AiRemote = {
     type: "ai-platform",
-    platform: ans.platform
+    platform: ans.platform as AiRemote["platform"]
   };
 
   if (ans.description) remote.description = ans.description;
@@ -942,10 +943,11 @@ async function editRemote(cfg: Config, name: string): Promise<void> {
 async function editNotionRemote(cfg: Config, name: string, current: NotionRemote): Promise<void> {
   const base = await inquirer.prompt([
     {
+      type: "input",
       name: "url",
       message: "Notion URL",
       default: current.url,
-      validate: (v: string) => v?.startsWith("http") ? true : "Enter a valid URL"
+      validate: (v: unknown) => typeof v === "string" && v.startsWith("http") ? true : "Enter a valid URL"
     }
   ]);
 
@@ -953,9 +955,9 @@ async function editNotionRemote(cfg: Config, name: string, current: NotionRemote
 
   if (current.type === "notion-database") {
     const views = await inquirer.prompt([
-      { name: "actions", message: "Actions view URL", default: current.views?.actions || "" },
-      { name: "aiUsage", message: "AI usage view URL", default: current.views?.aiUsage || "" },
-      { name: "projects", message: "Projects view URL", default: current.views?.projects || "" }
+      { type: "input", name: "actions", message: "Actions view URL", default: current.views?.actions || "" },
+      { type: "input", name: "aiUsage", message: "AI usage view URL", default: current.views?.aiUsage || "" },
+      { type: "input", name: "projects", message: "Projects view URL", default: current.views?.projects || "" }
     ]);
 
     current.views = {};
@@ -984,18 +986,21 @@ async function editNotionRemote(cfg: Config, name: string, current: NotionRemote
 async function editGitHubRemote(cfg: Config, name: string, current: GitHubRemote): Promise<void> {
   const ans = await inquirer.prompt([
     {
+      type: "input",
       name: "owner",
       message: "GitHub owner/org",
       default: current.owner,
-      validate: (v: string) => v ? true : "Required"
+      validate: (v: unknown) => v ? true : "Required"
     },
     {
+      type: "input",
       name: "repo",
       message: "Repository name",
       default: current.repo,
-      validate: (v: string) => v ? true : "Required"
+      validate: (v: unknown) => v ? true : "Required"
     },
     {
+      type: "input",
       name: "projectNumber",
       message: "Project number (optional)",
       default: current.projectNumber?.toString() || ""
