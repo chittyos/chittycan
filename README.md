@@ -1,3 +1,6 @@
+![ChittyOS](https://img.shields.io/badge/ChittyOS-service-6366F1?style=flat-square)
+![Tier](https://img.shields.io/badge/tier-3%20operational-3730A3?style=flat-square)
+
 # ChittyCan
 
 > **chittycan learn. chittycan evolve. chittycan remember.**
