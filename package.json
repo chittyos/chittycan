@@ -1,7 +1,7 @@
 {
   "name": "chittycan",
   "version": "0.5.1",
-  "description": "Your completely autonomous network that grows with you - DNA ownership platform with encrypted vaults, PDX portability, and ChittyFoundation governance",
+  "description": "ChittyCan CLI and infrastructure interface — AI gateway, ecosystem tooling, DNA ownership",
   "type": "module",
   "bin": {
     "can": "dist/index.js"
