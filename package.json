@@ -75,7 +75,7 @@
     "@types/inquirer": "^9.0.7",
     "@types/node": "^25.9.1",
     "@types/yargs": "^17.0.32",
-    "@vitest/coverage-v8": "^4.1.7",
+    "@vitest/coverage-v8": "^4.1.8",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7"
   }
