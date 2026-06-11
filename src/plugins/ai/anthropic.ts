@@ -1,11 +1,13 @@
 import type { ChittyPlugin, CommandDefinition, RemoteTypeDefinition } from "@/lib/plugin";
 import type { Config } from "@/lib/config";
+import { CHITTYCLAW_PROVIDER_BASE_URLS, gatewayAuthHeaders } from "./gateway";
 
 interface AnthropicRemote {
   type: "anthropic";
   apiKey: string;
   defaultModel?: string;
   baseUrl?: string;
+  cfAigToken?: string;
 }
 
 /**
@@ -18,17 +20,21 @@ class AnthropicClient {
     private options: {
       baseUrl?: string;
       defaultModel?: string;
+      cfAigToken?: string;
     } = {}
   ) {}
 
   private async request(endpoint: string, options: RequestInit = {}) {
-    const baseUrl = this.options.baseUrl || "https://api.anthropic.com/v1";
+    // Default to the chittyclaw AI Gateway so spend is captured by ChittyComptroller.
+    // Callers can still override with a non-gateway baseUrl (e.g. a proxy or direct).
+    const baseUrl = this.options.baseUrl || CHITTYCLAW_PROVIDER_BASE_URLS.anthropic;
     const response = await fetch(`${baseUrl}${endpoint}`, {
       ...options,
       headers: {
         "x-api-key": this.apiKey,
         "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
+        ...gatewayAuthHeaders(baseUrl, this.options.cfAigToken),
         ...options.headers,
       },
     });
@@ -68,13 +74,14 @@ class AnthropicClient {
 
   // Streaming helper
   async *messageStream(messages: Array<{ role: string; content: string }>, options: any = {}) {
-    const baseUrl = this.options.baseUrl || "https://api.anthropic.com/v1";
+    const baseUrl = this.options.baseUrl || CHITTYCLAW_PROVIDER_BASE_URLS.anthropic;
     const response = await fetch(`${baseUrl}/messages`, {
       method: "POST",
       headers: {
         "x-api-key": this.apiKey,
         "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
+        ...gatewayAuthHeaders(baseUrl, this.options.cfAigToken),
       },
       body: JSON.stringify({
         model: options.model || this.options.defaultModel || "claude-sonnet-4-5-20250929",
@@ -144,6 +151,7 @@ const commands: CommandDefinition[] = [
           const remote = config.remotes[args.remote || "anthropic"] as unknown as AnthropicRemote;
           const client = new AnthropicClient(remote.apiKey, {
             baseUrl: remote.baseUrl,
+            cfAigToken: remote.cfAigToken,
             defaultModel: remote.defaultModel,
           });
 
@@ -163,6 +171,7 @@ const commands: CommandDefinition[] = [
           const remote = config.remotes[args.remote || "anthropic"] as unknown as AnthropicRemote;
           const client = new AnthropicClient(remote.apiKey, {
             baseUrl: remote.baseUrl,
+            cfAigToken: remote.cfAigToken,
             defaultModel: remote.defaultModel,
           });
 
@@ -194,6 +203,7 @@ const commands: CommandDefinition[] = [
           const remote = config.remotes[args.remote || "anthropic"] as unknown as AnthropicRemote;
           const client = new AnthropicClient(remote.apiKey, {
             baseUrl: remote.baseUrl,
+            cfAigToken: remote.cfAigToken,
           });
 
           const usage = await client.getUsage();
@@ -224,9 +234,15 @@ const remoteType: RemoteTypeDefinition = {
     },
     {
       name: "baseUrl",
-      description: "API base URL (for proxies)",
+      description: "API base URL override (defaults to the chittyclaw AI Gateway so spend is captured; set to https://api.anthropic.com/v1 for direct)",
       required: false,
-      default: "https://api.anthropic.com/v1",
+      default: "https://gateway.ai.cloudflare.com/v1/0bc21e3a5a9de1a4cc843be9c3e98121/chittyclaw/anthropic/v1",
+    },
+    {
+      name: "cfAigToken",
+      description: "Cloudflare AI Gateway auth token (cf-aig-authorization); falls back to env CF_AIG_TOKEN / CF_ISSUED_AIGATEWAY_TOKEN",
+      required: false,
+      sensitive: true,
     },
   ],
 };
