@@ -1,5 +1,6 @@
 import type { ChittyPlugin, CommandDefinition, RemoteTypeDefinition } from "@/lib/plugin";
 import type { Config } from "@/lib/config";
+import { CHITTYCLAW_PROVIDER_BASE_URLS, gatewayAuthHeaders } from "./gateway";
 
 interface OpenAIRemote {
   type: "openai";
@@ -7,6 +8,7 @@ interface OpenAIRemote {
   organization?: string;
   defaultModel?: string;
   baseUrl?: string;
+  cfAigToken?: string;
 }
 
 /**
@@ -20,17 +22,21 @@ class OpenAIClient {
       organization?: string;
       baseUrl?: string;
       defaultModel?: string;
+      cfAigToken?: string;
     } = {}
   ) {}
 
   private async request(endpoint: string, options: RequestInit = {}) {
-    const baseUrl = this.options.baseUrl || "https://api.openai.com/v1";
+    // Default to the chittyclaw AI Gateway so spend is captured by ChittyComptroller.
+    // Callers can still override with a non-gateway baseUrl (e.g. a proxy or direct).
+    const baseUrl = this.options.baseUrl || CHITTYCLAW_PROVIDER_BASE_URLS.openai;
     const response = await fetch(`${baseUrl}${endpoint}`, {
       ...options,
       headers: {
         "Authorization": `Bearer ${this.apiKey}`,
         "Content-Type": "application/json",
         ...(this.options.organization ? { "OpenAI-Organization": this.options.organization } : {}),
+        ...gatewayAuthHeaders(baseUrl, this.options.cfAigToken),
         ...options.headers,
       },
     });
@@ -116,13 +122,14 @@ class OpenAIClient {
 
   // Streaming helper
   async *chatStream(messages: Array<{ role: string; content: string }>, options: any = {}) {
-    const baseUrl = this.options.baseUrl || "https://api.openai.com/v1";
+    const baseUrl = this.options.baseUrl || CHITTYCLAW_PROVIDER_BASE_URLS.openai;
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${this.apiKey}`,
         "Content-Type": "application/json",
         ...(this.options.organization ? { "OpenAI-Organization": this.options.organization } : {}),
+        ...gatewayAuthHeaders(baseUrl, this.options.cfAigToken),
       },
       body: JSON.stringify({
         model: options.model || this.options.defaultModel || "gpt-4",
@@ -181,6 +188,7 @@ const commands: CommandDefinition[] = [
           const client = new OpenAIClient(remote.apiKey, {
             organization: remote.organization,
             baseUrl: remote.baseUrl,
+            cfAigToken: remote.cfAigToken,
             defaultModel: remote.defaultModel,
           });
 
@@ -207,6 +215,7 @@ const commands: CommandDefinition[] = [
           const client = new OpenAIClient(remote.apiKey, {
             organization: remote.organization,
             baseUrl: remote.baseUrl,
+            cfAigToken: remote.cfAigToken,
             defaultModel: remote.defaultModel,
           });
 
@@ -227,6 +236,7 @@ const commands: CommandDefinition[] = [
           const client = new OpenAIClient(remote.apiKey, {
             organization: remote.organization,
             baseUrl: remote.baseUrl,
+            cfAigToken: remote.cfAigToken,
           });
 
           const result: any = await client.listModels();
@@ -243,6 +253,7 @@ const commands: CommandDefinition[] = [
           const client = new OpenAIClient(remote.apiKey, {
             organization: remote.organization,
             baseUrl: remote.baseUrl,
+            cfAigToken: remote.cfAigToken,
           });
 
           const result: any = await client.generateImage(args.prompt, {
@@ -261,6 +272,7 @@ const commands: CommandDefinition[] = [
           const client = new OpenAIClient(remote.apiKey, {
             organization: remote.organization,
             baseUrl: remote.baseUrl,
+            cfAigToken: remote.cfAigToken,
           });
 
           const result: any = await client.listAssistants();
@@ -300,9 +312,15 @@ const remoteType: RemoteTypeDefinition = {
     },
     {
       name: "baseUrl",
-      description: "API base URL (for proxies/compatible APIs)",
+      description: "API base URL override (defaults to the chittyclaw AI Gateway so spend is captured; set to https://api.openai.com/v1 for direct)",
       required: false,
-      default: "https://api.openai.com/v1",
+      default: "https://gateway.ai.cloudflare.com/v1/0bc21e3a5a9de1a4cc843be9c3e98121/chittyclaw/openai",
+    },
+    {
+      name: "cfAigToken",
+      description: "Cloudflare AI Gateway auth token (cf-aig-authorization); falls back to env CF_AIG_TOKEN / CF_ISSUED_AIGATEWAY_TOKEN",
+      required: false,
+      sensitive: true,
     },
   ],
 };
