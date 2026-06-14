@@ -48,6 +48,8 @@ import {
   growthCommand
 } from "./commands/grow.js";
 import { cleanup } from "./commands/cleanup.js";
+import { evaluateCommand } from "./commands/evaluate.js";
+import { marketCommand } from "./commands/market.js";
 import {
   proposeListCommand,
   proposeGenerateCommand,
@@ -301,6 +303,31 @@ yargs(args)
     () => {},
     async () => {
       await doctor();
+    }
+  )
+  .command(
+    "market <action> [cli]",
+    "ChittyMarket integration: push or pull CLI profiles",
+    (yargs) => {
+      yargs.positional("action", {
+        describe: "Action to perform (push, pull)",
+        type: "string",
+        choices: ["push", "pull"]
+      }).positional("cli", {
+        describe: "CLI to pull profiles for",
+        type: "string"
+      });
+    },
+    async (argv) => {
+      await marketCommand(argv.action as "push" | "pull", argv.cli as string | undefined);
+    }
+  )
+  .command(
+    "evaluate",
+    "Self-Evaluation: Run health checks and detect CLI drift",
+    () => {},
+    async () => {
+      await evaluateCommand();
     }
   )
   .command(

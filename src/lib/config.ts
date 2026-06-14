@@ -59,7 +59,7 @@ export interface SshRemote {
 
 export interface AiRemote {
   type: "ai-platform";
-  platform: "openai" | "anthropic" | "ollama" | "groq" | "replicate" | "together" | "huggingface" | "cohere";
+  platform: "openai" | "anthropic" | "ollama" | "groq" | "replicate" | "together" | "huggingface" | "cohere" | "chittyclaw";
   apiKey?: string; // Optional - falls back to env vars
   model?: string; // Default model to use
   baseUrl?: string; // For custom endpoints (Ollama, etc)

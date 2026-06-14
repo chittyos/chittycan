@@ -548,36 +548,56 @@ export async function handleAuthenticateContext(args: string[]): Promise<void> {
       console.log(`   \x1b[32m✓ Context found: ${context.chittyId}\x1b[0m`);
       console.log(`   Trust: L${context.trustLevel} (${(context.trustScore * 100).toFixed(1)}%)`);
     } else {
-      // Request new ChittyID from service
-      console.log(`   \x1b[33m⚠ No existing context, requesting ChittyID...\x1b[0m`);
-
-      const chittyId = await mintChittyId({
-        projectPath,
-        workspace,
-        supportType,
-        organization
-      });
-
-      if (chittyId) {
-        // @canon: chittycanon://gov/governance#core-types — contexts are Person (P), not Thing (T)
-        const entityTypeSegment = chittyId.split("-")[4];
-        if (entityTypeSegment && entityTypeSegment !== "P") {
-          console.log(`   \x1b[33m⚠ Entity type mismatch: got '${entityTypeSegment}', expected 'P' (Person)\x1b[0m`);
-        }
-
-        // Create context in database
-        context = await createContextInDb(chittyId, {
+      // Before minting, check local manifest for canonical entity.
+      // DB lookup can fail due to timeouts/cold starts — manifest is the
+      // local source of truth for the canonical P-typed orchestrator ID.
+      const manifestId = resolveFromManifest();
+      if (manifestId) {
+        console.log(`   \x1b[32m✓ Resolved from manifest: ${manifestId}\x1b[0m`);
+        // Try to create/upsert the context row so future DB lookups succeed
+        context = await createContextInDb(manifestId, {
           projectPath,
           workspace,
           supportType,
           organization,
           anchorHash
         });
-        console.log(`   \x1b[32m✓ New context minted: ${chittyId}\x1b[0m`);
+        // If DB insert also failed, use local binding with the manifest ID
+        if (!context || context.chittyId === "UNBOUND") {
+          context = createLocalContext(anchorHash, projectPath, workspace, supportType, organization, manifestId);
+        }
       } else {
-        // Fallback: create local-only binding
-        console.log(`   \x1b[33m⚠ Session UNBOUND - ChittyConnect unreachable\x1b[0m`);
-        context = createLocalContext(anchorHash, projectPath, workspace, supportType, organization);
+        // No manifest entry — genuinely new, mint a fresh ID
+        console.log(`   \x1b[33m⚠ No existing context, requesting ChittyID...\x1b[0m`);
+
+        const chittyId = await mintChittyId({
+          projectPath,
+          workspace,
+          supportType,
+          organization
+        });
+
+        if (chittyId) {
+          // @canon: chittycanon://gov/governance#core-types — contexts are Person (P), not Thing (T)
+          const entityTypeSegment = chittyId.split("-")[4];
+          if (entityTypeSegment && entityTypeSegment !== "P") {
+            console.log(`   \x1b[33m⚠ Entity type mismatch: got '${entityTypeSegment}', expected 'P' (Person)\x1b[0m`);
+          }
+
+          // Create context in database
+          context = await createContextInDb(chittyId, {
+            projectPath,
+            workspace,
+            supportType,
+            organization,
+            anchorHash
+          });
+          console.log(`   \x1b[32m✓ New context minted: ${chittyId}\x1b[0m`);
+        } else {
+          // Fallback: create local-only binding
+          console.log(`   \x1b[33m⚠ Session UNBOUND - ChittyConnect unreachable\x1b[0m`);
+          context = createLocalContext(anchorHash, projectPath, workspace, supportType, organization);
+        }
       }
     }
 
@@ -613,6 +633,33 @@ export async function handleAuthenticateContext(args: string[]): Promise<void> {
       boundAt: new Date().toISOString(),
       status: "offline"
     });
+  }
+}
+
+/**
+ * Resolve canonical ChittyID from local manifest.
+ * The manifest is the local source of truth — it records which P-typed entity
+ * is the canonical orchestrator. This prevents minting duplicate IDs when the
+ * DB is unreachable (cold start, timeout, network blip).
+ *
+ * Viewport, not birth: resolve before you mint.
+ */
+function resolveFromManifest(): string | null {
+  const manifestPath = join(homedir(), ".claude", "chittycontext", "manifest.json");
+  try {
+    if (!existsSync(manifestPath)) return null;
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+    const entities = manifest.entities || {};
+
+    // Find the first P-typed entity (canonical orchestrator)
+    for (const [entityId, info] of Object.entries(entities)) {
+      if ((info as any)?.entityType === "P") {
+        return entityId;
+      }
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 
@@ -927,19 +974,25 @@ async function writeSessionBinding(binding: ContextBinding): Promise<void> {
   }
   writeFileSync(SESSION_BINDING_FILE, JSON.stringify(binding, null, 2));
 
-  // Create entity directory for this ChittyID if it doesn't exist
-  if (binding.chittyId && binding.chittyId !== "OFFLINE") {
-    const entityDir = join(dir, "entities", binding.chittyId);
-    if (!existsSync(entityDir)) {
-      mkdirSync(entityDir, { recursive: true });
-    }
+  // Only create entity directory if this ID matches the manifest canonical.
+  // Previously, every session created entities/{freshMintedId}/ — spawning
+  // ghost directories when DB resolution failed and minted a duplicate.
+  if (binding.chittyId && binding.chittyId !== "OFFLINE" && binding.chittyId !== "UNBOUND") {
+    const canonicalId = resolveFromManifest();
+    const isCanonical = !canonicalId || binding.chittyId === canonicalId;
 
-    // Create project directory based on detected org/project
-    const projectSlug = detectProjectSlug(binding.projectPath);
-    if (projectSlug) {
-      const projectDir = join(entityDir, projectSlug);
-      if (!existsSync(projectDir)) {
-        mkdirSync(join(projectDir, "checkpoints"), { recursive: true });
+    if (isCanonical) {
+      const entityDir = join(dir, "entities", binding.chittyId);
+      if (!existsSync(entityDir)) {
+        mkdirSync(entityDir, { recursive: true });
+      }
+
+      const projectSlug = detectProjectSlug(binding.projectPath);
+      if (projectSlug) {
+        const projectDir = join(entityDir, projectSlug);
+        if (!existsSync(projectDir)) {
+          mkdirSync(join(projectDir, "checkpoints"), { recursive: true });
+        }
       }
     }
   }

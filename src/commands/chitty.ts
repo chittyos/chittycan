@@ -11,7 +11,9 @@
 
 import { spawn, execSync } from "child_process";
 import chalk from "chalk";
+import https from "https";
 import inquirer from "inquirer";
+import { recordExecution, getFewShotExamples } from "../lib/context-memory.js";
 import { loadConfig } from "../lib/config.js";
 import { trackCommandUsage, getPersonalizedSuggestions, showUsageInsights } from "../lib/usage-tracker.js";
 import { findWorkflow, executeWorkflow, listWorkflows } from "../lib/custom-workflows.js";
@@ -279,13 +281,43 @@ async function handleNaturalLanguageCommand(naturalLanguage: string): Promise<vo
   // Step 7: Execute
   try {
     await executeCommand(interpreted);
-
-    // Track successful command usage (Grow With Me!)
     trackCommandUsage(detectedCLI, naturalLanguage, interpreted, true);
-  } catch (error) {
-    // Track failed attempt
+    recordExecution(detectedCLI, naturalLanguage, interpreted, true);
+  } catch (error: any) {
     trackCommandUsage(detectedCLI, naturalLanguage, interpreted, false);
-    throw error;
+    recordExecution(detectedCLI, naturalLanguage, interpreted, false);
+    
+    // -- SELF HEALING LOOP --
+    const stderr = error.stderr || error.message;
+    console.log(chalk.yellow(`\n⚠️ Command failed. Analyzing error...`));
+    
+    const aiRemote = findAIRemote(config);
+    if (aiRemote) {
+      const healPrompt = `You are a CLI repair assistant. The user tried to run: ${interpreted}\nThis failed with the following error:\n${stderr}\n\nWhat is the correct command to fix this? Provide ONLY the raw command, no markdown or explanations.`;
+      
+      const suggestedFix = (await callAI(aiRemote, healPrompt, "Fix this command.")).replace(/^```[\w]*\n|\n```$/g, "").trim();
+      
+      console.log(chalk.cyan(`💡 Self-Healing Suggestion: ${suggestedFix}`));
+      const { runFix } = await inquirer.prompt([{
+        type: "confirm",
+        name: "runFix",
+        message: "Execute this fix?",
+        default: true
+      }]);
+      
+      if (runFix) {
+        try {
+          await executeCommand(suggestedFix);
+          console.log(chalk.green("✓ Healing successful."));
+          // Remember this fix as the new correct mapping
+          recordExecution(detectedCLI, naturalLanguage, suggestedFix, true);
+        } catch (healError: any) {
+          console.log(chalk.red("Healing failed: " + healError.message));
+        }
+      }
+    } else {
+      throw error;
+    }
   }
 }
 
@@ -350,7 +382,8 @@ function checkCLIInstalled(cli: SupportedCLI): boolean {
  * Find remote by type in config
  */
 function findRemoteByType(config: any, remoteType: string): any {
-  if (!config.remotes || !Array.isArray(config.remotes)) return null;
+  if (!config.remotes) return null;
+  if (!Array.isArray(config.remotes)) config.remotes = Object.values(config.remotes) as any;
 
   return config.remotes.find((r: any) => r.type === remoteType);
 }
@@ -504,13 +537,20 @@ async function interpretWithAI(cli: SupportedCLI, query: string, config: any): P
     throw new Error("No AI remote configured. Run: can config");
   }
 
+  const examples = getFewShotExamples(cli, 3);
+  let examplesText = "";
+  if (examples.length > 0) {
+    examplesText = "\nPast successful commands for this user (emulate these):\n" + 
+      examples.map(e => `- User: "${e.intent}" -> Command: ${e.command}`).join("\n");
+  }
+
   const systemPrompt = `You are a ${cli} command interpreter. Convert natural language to valid ${cli} commands.
 Rules:
 - Output ONLY the command, nothing else
 - No explanations, no markdown, no code blocks
 - Just the raw command that can be executed
 - Use proper ${cli} syntax and flags
-- Make it concise and abbreviated where possible`;
+- Make it concise and abbreviated where possible${examplesText}`;
 
   // Use the configured AI service
   const response = await callAI(aiRemote, systemPrompt, query);
@@ -529,9 +569,10 @@ Rules:
  * Find first available AI remote in config
  */
 function findAIRemote(config: any): any {
-  if (!config.remotes || !Array.isArray(config.remotes)) return null;
+  if (!config.remotes) return null;
+  if (!Array.isArray(config.remotes)) config.remotes = Object.values(config.remotes) as any;
 
-  const aiTypes = ["openai", "anthropic", "ollama", "groq"];
+  const aiTypes = ["chittyclaw", "openai", "anthropic", "ollama", "groq"];
 
   for (const remote of config.remotes) {
     if (aiTypes.includes(remote.type)) {
@@ -555,6 +596,8 @@ async function callAI(remote: any, systemPrompt: string, userPrompt: string): Pr
       return await callOllama(remote, systemPrompt, userPrompt);
     case "groq":
       return await callGroq(remote, systemPrompt, userPrompt);
+    case "chittyclaw":
+      return await callChittyClaw(remote, systemPrompt, userPrompt);
     default:
       throw new Error(`Unsupported AI type: ${remote.type}`);
   }
@@ -674,20 +717,77 @@ async function callGroq(remote: any, systemPrompt: string, userPrompt: string): 
 }
 
 /**
+ * Call ChittyClaw Gateway API
+ */
+async function callChittyClaw(remote: any, systemPrompt: string, userPrompt: string): Promise<string> {
+  const baseUrl = remote.baseUrl || "https://100.69.69.7";
+  
+  // Custom agent to bypass SSL SNI mismatch for IP-based gateway routing
+  const httpsAgent = new https.Agent({
+    rejectUnauthorized: false
+  });
+
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-chitty-client": "chittycan",
+        "Authorization": remote.apiKey ? `Bearer ${remote.apiKey}` : ""
+      },
+      agent: baseUrl.startsWith('https://') ? httpsAgent : undefined,
+      body: JSON.stringify({
+        model: remote.defaultModel || "claude-3-5-sonnet-20241022",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        temperature: 0.1,
+        max_tokens: 200,
+      }),
+    } as any);
+  } catch (err: any) {
+    throw new Error("Fetch exception: " + err.message + " | cause: " + (err.cause ? err.cause.message : "none"));
+  }
+
+  if (!response.ok) {
+    throw new Error(`ChittyClaw Gateway error: ${response.statusText}`);
+  }
+
+  const data: any = await response.json();
+  return data.choices[0].message.content;
+}
+
+/**
  * Execute command
  */
-async function executeCommand(command: string): Promise<void> {
+async function executeCommand(command: string): Promise<{ stdout: string, stderr: string }> {
   return new Promise((resolve, reject) => {
+    let stderrOutput = "";
+    let stdoutOutput = "";
     const child = spawn(command, [], {
-      stdio: "inherit",
+      stdio: ["inherit", "pipe", "pipe"],
       shell: true,
+    });
+    child.stdout.on("data", (data) => {
+      process.stdout.write(data);
+      stdoutOutput += data.toString();
+    });
+    child.stderr.on("data", (data) => {
+      process.stderr.write(data);
+      stderrOutput += data.toString();
     });
 
     child.on("exit", (code) => {
       if (code === 0) {
-        resolve();
+        resolve({ stdout: stdoutOutput, stderr: stderrOutput });
       } else {
-        reject(new Error(`Command failed with exit code ${code}`));
+        const err = new Error(`Command failed with exit code ${code}`);
+        (err as any).stderr = stderrOutput;
+        reject(err);
       }
     });
 
