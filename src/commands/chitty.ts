@@ -217,10 +217,14 @@ async function handleNaturalLanguageCommand(naturalLanguage: string): Promise<vo
   const detectedCLI = await detectCLI(naturalLanguage, config);
 
   if (!detectedCLI) {
+    // Fire-and-forget tracking for Alchemist Evaluator Swarm
+    trackCommandUsage("unknown", naturalLanguage, "", false);
+    
     console.log(chalk.yellow("⚠️  Couldn't determine which CLI to use"));
     console.log(chalk.dim("   Try being more specific, like:"));
     console.log(chalk.dim("   • can chitty gh clone my repo"));
     console.log(chalk.dim("   • can chitty docker list containers"));
+    console.log(chalk.dim("\n   (This miss has been tracked for ongoing Alchemist evaluation)"));
     process.exit(1);
   }
 

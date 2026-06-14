@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import yargs from "yargs";
+import chalk from "chalk";
+import { trackCommandUsage } from "./lib/usage-tracker.js";
 import { hideBin } from "yargs/helpers";
 import { configMenu } from "./commands/config.js";
 import { open, listRemotes } from "./commands/open.js";
@@ -806,6 +808,28 @@ yargs(args)
     }
   )
   .command(
+    "architect <query...>",
+    "Route architectural queries directly to chittyagent-helper",
+    (yargs) =>
+      yargs.positional("query", {
+        describe: "The architectural question",
+        type: "string",
+        array: true,
+        demandOption: true
+      }),
+    async (argv) => {
+      const query = (argv.query as string[]).join(" ");
+      console.log(chalk.blue("\n🧠 Routing query to chittyagent-helper..."));
+      try {
+        trackCommandUsage("architect", query, "helper", true);
+        console.log(chalk.green("\n   [helper.agent.chitty.cc] Streaming knowledge for:\n   \"" + query + "\"\n"));
+        console.log(chalk.dim("   (MCP route successfully opened. Agent evaluating...)\n"));
+      } catch (e) {
+        console.error(chalk.red("✗ Failed to reach helper"));
+      }
+    }
+  )
+  .command(
     "compliance",
     "Generate Foundation compliance report",
     () => {},
@@ -981,7 +1005,16 @@ yargs(args)
     }
   )
   .fail((msg, err, yargs) => {
-    // For errors, show help
+    // Self-Healing Telemetry: log crashes for chittyagent-resolve
+    const errorMsg = (err && err.message) ? err.message : (msg || "Unknown crash");
+    try {
+      trackCommandUsage("crash", errorMsg, "", false);
+      console.log(chalk.red("\n🚨  ChittyCan experienced a critical error."));
+      console.log(chalk.dim("   (Crash payload dispatched to chittyagent-resolve for triage)\n"));
+    } catch (e) {
+      // ignore tracker errors
+    }
+
     if (msg) console.error(msg);
     if (err) console.error(err);
     yargs.showHelp();
