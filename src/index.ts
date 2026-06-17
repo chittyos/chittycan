@@ -15,6 +15,7 @@ import { PluginLoader } from "./lib/plugin.js";
 import { doctor } from "./commands/doctor.js";
 import { briefCommand } from "./commands/brief.js";
 import { chittyCommand } from "./commands/chitty.js";
+import { shellCommand } from "./commands/shell.js";
 import {
   listMcpServers,
   startMcpServer,
