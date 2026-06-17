@@ -1,0 +1,107 @@
+--- src/commands/hook-handlers.ts
++++ src/commands/hook-handlers.ts
+@@ -546,47 +546,38 @@
+     // Try to resolve existing context from database
+     let context = await resolveContextFromDb(anchorHash);
+ 
+     if (context) {
+       console.log(`   \x1b[32m✓ Context found: ${context.chittyId}\x1b[0m`);
+       console.log(`   Trust: L${context.trustLevel} (${(context.trustScore * 100).toFixed(1)}%)`);
+     } else {
+-<<<<<<< HEAD
+       // Before minting, check local manifest for canonical entity.
+       // DB lookup can fail due to timeouts/cold starts — manifest is the
+       // local source of truth for the canonical P-typed orchestrator ID.
+       const manifestId = resolveFromManifest();
+       if (manifestId) {
+         console.log(`   \x1b[32m✓ Resolved from manifest: ${manifestId}\x1b[0m`);
+         // Try to create/upsert the context row so future DB lookups succeed
+         context = await createContextInDb(manifestId, {
+-=======
+-      // Request new ChittyID from service
+-      console.log(`   \x1b[33m⚠ No existing context, requesting ChittyID...\x1b[0m`);
+-
+-      const chittyId = await mintChittyId({
+-        projectPath,
+-        workspace,
+-        supportType,
+-        organization
+-      });
+-
+-      if (chittyId) {
+-        // @canon: chittycanon://gov/governance#core-types — contexts are Person (P), not Thing (T)
+-        // ChittyMint currently ignores entity_type param; correct it client-side until upstream fix
+-        const segments = chittyId.split(-);
+-        let correctedId = chittyId;
+-        if (segments[4] && segments[4] !== P) {
+-          console.log(`   \x1b[33m⚠ Entity type mismatch: got '${segments[4]}', expected 'P' (Person) — correcting\x1b[0m`);
+-          segments[4] = P;
+-          // Recalculate checksum (mod-97 of all segments except last)
+-          const baseSegments = segments.slice(0, -1);
+-          const numericStr = baseSegments.join().replace(/[A-Z]/g, (c) => String(c.charCodeAt(0) - 55));
+-          const checksum = String(98n - (BigInt(numericStr) % 97n)).padStart(2, 0);
+-          segments[segments.length - 1] = checksum;
+-          correctedId = segments.join(-);
+-        }
+-        // Create context in database
+-        context = await createContextInDb(correctedId, {
+->>>>>>> main
+           projectPath,
+           workspace,
+           supportType,
+           organization,
+           anchorHash
+         });
+-<<<<<<< HEAD
+         // If DB insert also failed, use local binding with the manifest ID
+         if (!context || context.chittyId === UNBOUND) {
+           context = createLocalContext(anchorHash, projectPath, workspace, supportType, organization, manifestId);
+         }
+-=======
+-        console.log(`   \x1b[32m✓ New context minted: ${correctedId}\x1b[0m`);
+->>>>>>> main
+       } else {
+         // No manifest entry — genuinely new, mint a fresh ID
+         console.log(`   \x1b[33m⚠ No existing context, requesting ChittyID...\x1b[0m`);
+ 
+         const chittyId = await mintChittyId({
+           projectPath,
+           workspace,
+           supportType,
+           organization
+         });
+ 
+         if (chittyId) {
+-          // @canon: chittycanon://gov/governance#core-types — contexts are Person (P), not Thing (T)
+-          const entityTypeSegment = chittyId.split(-)[4];
+-          if (entityTypeSegment && entityTypeSegment !== P) {
+-            console.log(`   \x1b[33m⚠ Entity type mismatch: got '${entityTypeSegment}', expected 'P' (Person)\x1b[0m`);
++          // @canon: chittycanon://gov/governance#core-types — contexts are Person (P), not Thing (T)
++          // ChittyMint currently ignores entity_type param; correct it client-side until upstream fix
++          const segments = chittyId.split(-);
++          let correctedId = chittyId;
++          if (segments[4] && segments[4] !== P) {
++            console.log(`   \x1b[33m⚠ Entity type mismatch: got '${segments[4]}', expected 'P' (Person) — correcting\x1b[0m`);
++            segments[4] = P;
++            // Recalculate checksum (mod-97 of all segments except last)
++            const baseSegments = segments.slice(0, -1);
++            const numericStr = baseSegments.join().replace(/[A-Z]/g, (c) => String(c.charCodeAt(0) - 55));
++            const checksum = String(98n - (BigInt(numericStr) % 97n)).padStart(2, 0);
++            segments[segments.length - 1] = checksum;
++            correctedId = segments.join(-);
+           }
+ 
+           // Create context in database
+-          context = await createContextInDb(chittyId, {
++          context = await createContextInDb(correctedId, {
+             projectPath,
+             workspace,
+             supportType,
+             organization,
+             anchorHash
+           });
+-          console.log(`   \x1b[32m✓ New context minted: ${chittyId}\x1b[0m`);
++          console.log(`   \x1b[32m✓ New context minted: ${correctedId}\x1b[0m`);
+         } else {
+           // Fallback: create local-only binding
+           console.log(`   \x1b[33m⚠ Session UNBOUND - ChittyConnect unreachable\x1b[0m`);

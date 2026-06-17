@@ -220,6 +220,21 @@ async function handleNaturalLanguageCommand(naturalLanguage: string): Promise<vo
     // Fire-and-forget tracking for Alchemist Evaluator Swarm
     trackCommandUsage("unknown", naturalLanguage, "", false);
     
+    const aiRemote = findAIRemote(config);
+    if (aiRemote) {
+      try {
+        const systemPrompt = `You are ChittyCan, the CLI companion for ChittyOS.
+The user asked: "${naturalLanguage}"
+This does not map to a standard CLI tool (like docker, gh, npm). 
+Respond conversationally, briefly answering their question or guiding them to the correct ChittyOS command (like \`can mcp list\`, \`can connect\`, or \`can learn\`). Be helpful and very concise.`;
+        const response = await callAI(aiRemote, systemPrompt, naturalLanguage);
+        console.log(chalk.cyan(`\n  💬 ${response.trim()}\n`));
+        process.exit(0);
+      } catch (err) {
+        // Fall back to original message
+      }
+    }
+
     console.log(chalk.yellow("⚠️  Couldn't determine which CLI to use"));
     console.log(chalk.dim("   Try being more specific, like:"));
     console.log(chalk.dim("   • can chitty gh clone my repo"));
