@@ -146,14 +146,8 @@ export async function chittyCommand(args: string[]): Promise<void> {
     return;
   }
 
-  // Special command: learn (called by PreToolUse hook OR manually by user for URLs)
+  // Special command: learn (called by PreToolUse hook)
   if (args[0] === "learn") {
-    const urlPattern = /^https?:\/\//i;
-    if (args[1] && urlPattern.test(args[1])) {
-      const { learnUrlCommand } = await import("./learn.js");
-      await learnUrlCommand(args[1]);
-      return;
-    }
     const { handleToolPre } = await import("./hook-handlers.js");
     await handleToolPre(args.slice(1));
     return;
@@ -198,65 +192,6 @@ export async function chittyCommand(args: string[]): Promise<void> {
     console.log();
     console.log(chalk.blue(`🔧 Found custom workflow: ${chalk.white(workflow.name)}`));
     await executeWorkflow(workflow);
-    return;
-  }
-
-  // Intercept ChittyOS-specific meta-commands to natively route instead of fallback to conversational AI
-  const lowerNL = naturalLanguage.toLowerCase();
-  
-  // 1. Authentication / Setup
-  if (lowerNL.includes("authenticate") || lowerNL.includes("login") || lowerNL.includes("setup")) {
-    console.log(chalk.blue(`🤖 Understanding: ${chalk.white(naturalLanguage)}`));
-    console.log(chalk.cyan("➜ Redirecting to native Setup Wizard..."));
-    const { configSetup } = await import("./config.js");
-    await configSetup();
-    return;
-  }
-
-  // 2. MCP Management
-  if (lowerNL.includes("mcp") || lowerNL.includes("model context protocol")) {
-    console.log(chalk.blue(`🤖 Understanding: ${chalk.white(naturalLanguage)}`));
-    console.log(chalk.cyan("➜ Redirecting to native MCP Manager..."));
-    const { listMcpServers } = await import("./mcp.js");
-    listMcpServers();
-    return;
-  }
-
-  // 3. Marketplace (install, add, pull, open)
-  if (lowerNL.includes("market") || lowerNL.includes("chittymarket") || lowerNL.includes("marketplace")) {
-    console.log(chalk.blue(`🤖 Understanding: ${chalk.white(naturalLanguage)}`));
-    
-    if (lowerNL.includes("install") || lowerNL.includes("add")) {
-      console.log(chalk.cyan("➜ Adding external ChittyMarket Registry..."));
-      // Simulate adding a registry URL
-      const urlMatch = naturalLanguage.match(/https?:\/\/[^\s]+|github\.com[^\s]+/);
-      const registryUrl = urlMatch ? urlMatch[0] : "registry.chitty.cc";
-      console.log(chalk.green(`✓ Successfully added marketplace registry: ${registryUrl}`));
-      console.log(chalk.dim(`You can now pull profiles and agents from this registry.`));
-      return;
-    }
-
-    console.log(chalk.cyan("➜ Redirecting to ChittyMarket..."));
-    const { marketCommand } = await import("./market.js");
-    await marketCommand("pull", undefined);
-    return;
-  }
-
-  // 4. Brief / Project Context
-  if (lowerNL.includes("brief") || lowerNL.includes("project context") || lowerNL.includes("what am i working on")) {
-    console.log(chalk.blue(`🤖 Understanding: ${chalk.white(naturalLanguage)}`));
-    console.log(chalk.cyan("➜ Redirecting to Project Brief..."));
-    const { briefCommand } = await import("./brief.js");
-    await briefCommand({});
-    return;
-  }
-
-  // 5. DNA / Identity
-  if (lowerNL.includes("dna") || lowerNL.includes("identity") || lowerNL.includes("compliance")) {
-    console.log(chalk.blue(`🤖 Understanding: ${chalk.white(naturalLanguage)}`));
-    console.log(chalk.cyan("➜ Redirecting to DNA Status..."));
-    const { dnaStatusCommand } = await import("./dna.js");
-    await dnaStatusCommand();
     return;
   }
 
@@ -652,7 +587,7 @@ Rules:
 /**
  * Find first available AI remote in config
  */
-export function findAIRemote(config: any): any {
+function findAIRemote(config: any): any {
   if (!config.remotes) return null;
   if (!Array.isArray(config.remotes)) config.remotes = Object.values(config.remotes) as any;
 
@@ -670,7 +605,7 @@ export function findAIRemote(config: any): any {
 /**
  * Call AI service to get completion
  */
-export async function callAI(remote: any, systemPrompt: string, userPrompt: string): Promise<string> {
+async function callAI(remote: any, systemPrompt: string, userPrompt: string): Promise<string> {
   switch (remote.type) {
     case "openai":
       return await callOpenAI(remote, systemPrompt, userPrompt);

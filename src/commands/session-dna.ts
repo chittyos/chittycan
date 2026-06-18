@@ -143,7 +143,6 @@ export async function sessionCreateCommand(options: {
   ttl?: number;
   parent?: string;
   interactive?: boolean;
-  entityId?: string;
 }): Promise<void> {
   await ensureSessionDnaDir();
 
@@ -216,7 +215,7 @@ export async function sessionCreateCommand(options: {
   }
 
   // Generate session ChittyID
-  const sessionChittyId = options.entityId || `CHITTY-SES-${crypto.randomUUID().replace(/-/g, '').substring(0, 8).toUpperCase()}`;
+  const sessionChittyId = `CHITTY-SES-${crypto.randomUUID().replace(/-/g, '').substring(0, 8).toUpperCase()}`;
 
   // Calculate expiration
   const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000).toISOString();
