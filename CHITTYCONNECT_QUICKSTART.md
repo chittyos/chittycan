@@ -5,8 +5,10 @@ Integration between ChittyCan and ChittyConnect's MCP server for Claude Code.
 ## 30-Second Setup
 
 ```bash
-# 1. Set your API token (get from https://auth.chitty.cc/v1/register)
+# 1. Set your API tokens (get from https://auth.chitty.cc/v1/register)
+# Note: The CLI uses CHITTY_TOKEN, but the MCP server explicitly requires CHITTY_AUTH_SERVICE_TOKEN
 export CHITTY_TOKEN="your-token-here"
+export CHITTY_AUTH_SERVICE_TOKEN="your-token-here"
 
 # 2. Build ChittyCan
 npm install && npm run build
@@ -70,9 +72,10 @@ Your ChittyConnect config lives in `~/.config/chitty/config.json`:
 
 ## Troubleshooting
 
-**Token not set?**
+**Token not set or MCP server crashing?**
 ```bash
 export CHITTY_TOKEN="your-token-here"
+export CHITTY_AUTH_SERVICE_TOKEN="your-token-here"
 # Add to ~/.zshrc to persist
 ```
 
