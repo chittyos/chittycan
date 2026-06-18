@@ -1,8 +1,53 @@
 import inquirer from "inquirer";
+import chalk from "chalk";
 import { loadConfig, saveConfig, getConfigPath, type NotionRemote, type GitHubRemote, type RcloneRemote, type McpRemote, type CloudflareRemote, type NeonRemote, type SshRemote, type AiRemote, type Config } from "../lib/config.js";
 import fs from "fs";
 import { execSync } from "child_process";
 import os from "os";
+
+import { installMcpConfig } from "./mcp-config.js";
+import { connectSetup } from "./connect.js";
+import { doctor } from "./doctor.js";
+
+export async function configSetup(): Promise<void> {
+  console.log(chalk.bold("\n🚀 ChittyCan Universal Setup Wizard\n"));
+  
+  // Step 1: Base Connection
+  await connectSetup();
+  
+  // Step 2: MCP / Editor Integration
+  await installMcpConfig();
+  
+  // Step 3: Dynamic Marketplace Agent Pulling
+  console.log(chalk.bold("\n🛒 ChittyMarket: Dynamic Agent Setup"));
+  console.log(chalk.dim("Pulling community profiles gives your local agent immediate expertise in specific stacks.\n"));
+  
+  const { agents } = await inquirer.prompt([{
+    type: "checkbox",
+    name: "agents",
+    message: "Select community agents/profiles to pull into your local memory:",
+    choices: [
+      { name: "React Web Developer (frontend, components, hooks)", value: "react", checked: true },
+      { name: "Node.js Backend Engineer (api, db, auth)", value: "node", checked: true },
+      { name: "Cloudflare/Edge DevOps (workers, pages, r2)", value: "cloudflare" },
+      { name: "Python Data Scientist (pandas, jupyter, ml)", value: "python" },
+      { name: "Docker/Infra Specialist (compose, k8s, sysadmin)", value: "docker" }
+    ]
+  }]);
+
+  if (agents.length > 0) {
+    // Dynamically import marketCommand to avoid circular dependencies if any
+    const { marketCommand } = await import("./market.js");
+    for (const agent of agents) {
+      await marketCommand("pull", agent);
+    }
+  } else {
+    console.log(chalk.dim("Skipping marketplace pull. You can pull agents later with 'can market pull <name>'."));
+  }
+
+  console.log(chalk.bold("\n✨ Setup Complete!"));
+  console.log(chalk.dim("Run 'can doctor' to verify your installation."));
+}
 
 export async function configMenu(): Promise<void> {
   const configPath = getConfigPath();
