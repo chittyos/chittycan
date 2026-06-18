@@ -1,3 +1,4 @@
+import { scaffoldCommand } from './commands/scaffold.js';
 #!/usr/bin/env node
 
 import yargs from "yargs";
@@ -42,6 +43,7 @@ import {
   sessionListCommand,
   sessionAddGeneCommand
 } from "./commands/session-dna.js";
+import { sessionStartCommand } from "./commands/session.js";
 import { complianceReportCommand } from "./commands/compliance.js";
 import {
   analyticsCommand,
@@ -831,6 +833,27 @@ yargs(args)
     }
   )
   .command(
+    "session",
+    "Hu x AI session lifecycle and context awakening",
+    (yargs) =>
+      yargs
+        .command(
+          "start",
+          "Initiate interactive Entity awakening",
+          (yargs) =>
+            yargs.option("project", {
+              type: "string",
+              description: "Project ID"
+            }),
+          async (argv) => {
+            await sessionStartCommand({ project: argv.project as string });
+          }
+        ),
+    () => {
+      yargs.showHelp();
+    }
+  )
+  .command(
     "compliance",
     "Generate Foundation compliance report",
     () => {},
@@ -873,9 +896,8 @@ yargs(args)
     (yargs) =>
       yargs
         .positional("type", {
-          describe: "Learning type",
+          describe: "Learning type or URL",
           type: "string",
-          choices: ["command", "context", "git"],
           demandOption: true
         })
         .positional("args", {
@@ -884,7 +906,13 @@ yargs(args)
           array: true
         }),
     async (argv) => {
-      await learnCommand(argv.type as any, (argv.args as string[]) || []);
+      const typeStr = argv.type as string;
+      if (typeStr.startsWith("http://") || typeStr.startsWith("https://")) {
+        const { learnUrlCommand } = await import("./commands/learn.js");
+        await learnUrlCommand(typeStr);
+      } else {
+        await learnCommand(typeStr as any, (argv.args as string[]) || []);
+      }
     }
   )
   .command(
@@ -1003,6 +1031,19 @@ yargs(args)
         ),
     async () => {
       await synthesizeCommand();
+    }
+  )
+  .command(
+    "scaffold <type>",
+    "Scaffold a new ChittyOS component with Compliance Pentad validation",
+    (yargs) =>
+      yargs.positional("type", {
+        describe: "The component type to scaffold",
+        type: "string",
+        demandOption: true
+      }),
+    async (argv) => {
+      await scaffoldCommand(argv.type);
     }
   )
   .fail((msg, err, yargs) => {
