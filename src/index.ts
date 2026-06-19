@@ -1,5 +1,5 @@
-import { scaffoldCommand } from './commands/scaffold.js';
 #!/usr/bin/env node
+import { scaffoldCommand } from './commands/scaffold.js';
 
 import yargs from "yargs";
 import chalk from "chalk";
