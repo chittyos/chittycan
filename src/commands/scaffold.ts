@@ -1,13 +1,11 @@
 import chalk from 'chalk';
-import { trackCommandUsage } from '../utils.js';
 
 export async function scaffoldCommand(type) {
   console.log(chalk.blue(`\n🏗️  Scaffolding new ChittyOS component: ${type}`));
   console.log(chalk.magenta(`🛡️  Invoking chittyagent-canon for ChittyOS Compliance Pentad validation...`));
   
   try {
-    trackCommandUsage("scaffold", type, "canon", true);
-    
+        
     console.log(chalk.green(`\n   [canon.agent.chitty.cc] Validating compliance pentad for '${type}'...\n`));
     console.log(chalk.dim(`   (MCP route successfully opened. Agent evaluating Pentad: CHARTER, CHITTY, CLAUDE, SECURITY, AGENTS)\n`));
     
