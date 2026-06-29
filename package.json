@@ -67,7 +67,7 @@
     "chittycan": "^0.3.0",
     "fs-extra": "^11.3.5",
     "inquirer": "^14.0.2",
-    "ora": "^9.4.0",
+    "ora": "^9.4.1",
     "yargs": "^17.7.2"
   },
   "devDependencies": {
