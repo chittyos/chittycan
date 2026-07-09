@@ -64,7 +64,7 @@ source ~/.zshrc
 Now you'll get smart nudges after:
 - `git commit`
 - `git merge`
-- `wrangler deploy`
+- `cf deploy`
 - `npm publish`
 
 **Hotkeys:**
@@ -295,7 +295,7 @@ chitty open tracker projects
 ### Deploying to Production
 
 ```bash
-wrangler deploy --env production
+cf deploy --env production
 # [chitty] Remember to update your tracker
 # Ctrl-G to open and log deployment in Decision Log
 ```

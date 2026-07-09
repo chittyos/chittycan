@@ -436,7 +436,7 @@ import { loadConfig } from "../lib/config.js";
 
 /**
  * Fetch database URL from ChittyConnect
- * Routes through connect.chitty.cc which retrieves from 1Password
+ * Routes through connect.chitty.cc which retrieves from chittysecrets
  * Path format: /api/credentials/{vault}/{item}/{field}
  */
 async function fetchChittyCanonDbUrl(): Promise<string | null> {
@@ -472,7 +472,7 @@ async function getChittyCanonDbUrl(): Promise<string | null> {
     return cachedDbUrl;
   }
 
-  // Priority 2: ChittyConnect (which retrieves from 1Password)
+  // Priority 2: ChittyConnect (which retrieves from chittysecrets)
   cachedDbUrl = await fetchChittyCanonDbUrl();
   if (cachedDbUrl) {
     return cachedDbUrl;
@@ -819,7 +819,7 @@ async function resolveContextFromDb(anchorHash: string): Promise<ContextBinding 
  * Mint a new ChittyID via ChittyConnect
  *
  * Routes through connect.chitty.cc which handles:
- * - 1Password service token authentication
+ * - chittysecrets service token authentication
  * - ContextConsciousness™ tracking
  * - MemoryCloude™ session persistence
  *

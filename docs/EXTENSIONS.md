@@ -501,14 +501,14 @@ chitty email templates list
 
 ### 11. Authentication & Secrets
 
-#### 1Password CLI
+#### chittysecrets CLI
 ```bash
-chitty 1password items list
-chitty 1password get "Notion API Token"
-chitty 1password create "New Service Token" --value secret123
+chitty chittysecrets items list
+chitty chittysecrets get "Notion API Token"
+chitty chittysecrets create "New Service Token" --value secret123
 ```
 
-**Remote type:** `1password-vault`
+**Remote type:** `chittysecrets-vault`
 
 #### Vault (HashiCorp)
 ```bash
@@ -1236,7 +1236,7 @@ chitty ext uninstall @chitty/cloudflare
 ### Phase 4
 8. **Vercel/Netlify** - Alternative deployments
 9. **Sentry** - Error tracking
-10. **1Password/Vault** - Secrets management
+10. **chittysecrets/Vault** - Secrets management
 
 ### Phase 5 (Community)
 11. **Slack/Discord** - Notifications

@@ -135,7 +135,7 @@ A **unified CLI** with:
 - [ ] **Make** - Scenarios, integrations
 
 ### 🔐 Phase 6: Secrets & Auth
-- [ ] **1Password** - Vaults, items, CLI integration
+- [ ] **chittysecrets** - Vaults, items, CLI integration
 - [ ] **HashiCorp Vault** - Secrets, policies
 - [ ] **Doppler** - Projects, environments, secrets
 

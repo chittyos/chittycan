@@ -51,7 +51,7 @@ export function isGatewayUrl(baseUrl: string): boolean {
 /**
  * Resolve the CF AI Gateway authorization token without hardcoding it.
  * Order: explicit option -> env (CF_AIG_TOKEN, matching chittyagent-ai's name,
- * then CF_ISSUED_AIGATEWAY_TOKEN as the 1Password field alias).
+ * then CF_ISSUED_AIGATEWAY_TOKEN as the chittysecrets field alias).
  */
 export function resolveCfAigToken(explicit?: string): string | undefined {
   return (
