@@ -112,7 +112,7 @@ npm install
 wrangler secret put GITHUB_WEBHOOK_SECRET
 wrangler secret put NOTION_TOKEN
 wrangler secret put GITHUB_PRIVATE_KEY
-cf deploy
+wrangler deploy
 ```
 
 Update your GitHub App webhook URL to: `https://your-worker.workers.dev/webhook`

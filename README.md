@@ -304,7 +304,7 @@ can hook install zsh
 # Now you'll get nudges after:
 # - git commit
 # - git merge
-# - cf deploy
+# - wrangler deploy
 # - npm publish
 
 # Manual checkpoint
