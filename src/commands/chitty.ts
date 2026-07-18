@@ -167,7 +167,7 @@ export async function chittyCommand(args: string[]): Promise<void> {
   }
 
   // Special command: authenticate-context (called by SessionStart hook)
-  if (args[0] === "authenticate-context") {
+  if (args[0] === "authenticate-context" || args[0] === "whoami") {
     const { handleAuthenticateContext } = await import("./hook-handlers.js");
     await handleAuthenticateContext(args.slice(1));
     return;
@@ -658,13 +658,16 @@ export function findAIRemote(config: any): any {
 
   const aiTypes = ["chittyclaw", "openai", "anthropic", "ollama", "groq"];
 
+  let fallback = null;
   for (const remote of config.remotes) {
-    if (aiTypes.includes(remote.type)) {
+    if (remote.type === "chittyclaw") {
       return remote;
     }
+    if (aiTypes.includes(remote.type) && !fallback) {
+      fallback = remote;
+    }
   }
-
-  return null;
+  return fallback;
 }
 
 /**

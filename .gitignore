@@ -41,3 +41,9 @@ config.json
 # Temporary files
 *.tmp
 .cache/
+
+# Local Claude/Codex state
+.claude/
+.claude/worktrees/
+src/.claude/
+
