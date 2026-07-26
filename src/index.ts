@@ -53,6 +53,7 @@ import {
   growthCommand
 } from "./commands/grow.js";
 import { cleanup } from "./commands/cleanup.js";
+import { storeCommand } from "./commands/store.js";
 import { evaluateCommand } from "./commands/evaluate.js";
 import { marketCommand } from "./commands/market.js";
 import {
@@ -385,6 +386,20 @@ yargs(args)
         quiet: argv.quiet,
         agent: argv.agent as "local" | "volume" | "kondo" | "all" | undefined
       });
+    }
+  )
+  .command(
+    "export [args..]",
+    "Securely store a secret in ChittySecrets",
+    (yargs) =>
+      yargs.positional("args", {
+        describe: "Key and value, e.g., <key> <value> or x=<key>: <value>",
+        type: "string",
+        array: true
+      }),
+    async (argv) => {
+      const args = (argv.args as string[]) || [];
+      await storeCommand(args);
     }
   )
   .command(
