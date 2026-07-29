@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { runCommand } from "./commands/run.js";
 import { scaffoldCommand } from './commands/scaffold.js';
 
 import yargs from "yargs";
@@ -1059,6 +1060,34 @@ yargs(args)
       }),
     async (argv) => {
       await scaffoldCommand(argv.type);
+    }
+  )
+  
+  .command(
+    "run [cmd...]",
+    "Run a process with ChittySecrets injected via ChittyConnect",
+    (yargs) =>
+      yargs
+        .option("env-file", {
+          type: "string",
+          description: "Path to environment file (e.g., .env.chitty)"
+        })
+        .positional("cmd", {
+          describe: "Command and arguments to run",
+          type: "string",
+          array: true
+        }),
+    async (argv) => {
+      // yargs might pass '--' args into '_' or we can parse it from process.argv
+      // A quick hack: yargs parses positional into argv.cmd
+      // But if there's a --, yargs puts it in argv._ 
+      // It's safer to just pass argv['env-file'] and argv.cmd.
+      const cmdArgs = (argv.cmd as string[]) || [];
+      // Also grab anything after '--' if it's there
+      const extras = (argv._.slice(1) as string[]) || [];
+      // If cmdArgs is empty, maybe they did 'can run -- npm run deploy'
+      const finalArgs = cmdArgs.length > 0 ? cmdArgs : extras;
+      await runCommand(argv["env-file"] as string | undefined, finalArgs);
     }
   )
   .fail((msg, err, yargs) => {
