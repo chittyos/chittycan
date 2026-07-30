@@ -133,20 +133,33 @@ c588f4c chore: merge main
 - `76942c4` (chitcommit, 2026-06-16 16:49:03) shares **the same parents** as `04cd5e3` (`808f1c3` / `42076f5`) but different content, and is not an ancestor of `origin/main`. It is a superseded/rewritten first attempt at the same merge, not a rebase casualty.
 - `3d60dab` (Nick Bianchi, 2026-03-19) is a merge *into a feature branch* (`fix/entity-type-correction`), also not in `origin/main`.
 
-So: **5 merge commits observed across the repo's life (2026-03-03 → 2026-07-30, 104 commits on `main`), 3 of which reached `origin/main`.** No rate is claimed — the sample is too small and the denominator (how many local merges existed and were quietly flattened) is unknowable. Reflog entries expire (~90 days by default), so absence of further hits is not proof that none occurred.
+So: **5 merge commits observed across the repo's life (2026-03-03 → 2026-07-30, 104 commits on `main`), 2 of which reached `origin/main`.** No rate is claimed — the sample is too small and the denominator (how many local merges existed and were quietly flattened) is unknowable. Reflog entries expire (~90 days by default), so absence of further hits is not proof that none occurred.
 
-**The risk is not hypothetical — verified, not inferred from the title.** `04cd5e3` is a genuine "evil merge": it differs substantively from *both* parents, meaning it holds content that exists nowhere else in the graph.
+> **CORRECTION (adversarial review, verified first-hand).** An earlier revision of this section claimed 3 merges reached `origin/main` and that `04cd5e3`/`c588f4c` were "evil merges" holding content found nowhere else. **Both claims were wrong.** They are corrected in place below; the original assertions should not be relied on.
+
+Reachability, measured with `git merge-base --is-ancestor <sha> origin/main`:
 
 ```
-$ git diff 04cd5e3^1 04cd5e3 --stat | tail -1
- 5 files changed, 404 insertions(+), 503 deletions(-)
-$ git diff 04cd5e3^2 04cd5e3 --stat | tail -1
- 14 files changed, 874 insertions(+), 66 deletions(-)
+ba8bdce: no      c588f4c: YES     04cd5e3: YES     76942c4: no      3d60dab: no
 ```
 
-Contrast with `ba8bdce`, where the parent-2 diff was empty. Had a plain `git rebase` been run across `04cd5e3` while it was still local, the `hook-handlers.ts` checksum-correction and manifest-precedence resolution recorded in that merge would have been silently discarded. `ba8bdce` was benign; `04cd5e3` demonstrably would not have been.
+`ba8bdce` does not exist on the remote at all — `gh api repos/CHITTYOS/chittycan/commits/ba8bdce…` returns HTTP 422, `"No commit found for SHA"`.
 
-(`c588f4c` is a merge whose first parent is `04cd5e3` — a merge-of-a-merge, and also an evil merge by the same test: 2 files vs parent 1, 14 files vs parent 2. It compounds the exposure, since flattening either one loses distinct content.)
+**Neither merge is an evil merge.** The original test — non-empty `git diff <sha>^1 <sha>` **and** `git diff <sha>^2 <sha>` — is invalid: it is non-empty for essentially *every* non-trivial merge, because a merge contains both sides by construction. It cannot distinguish a unique-content merge from an ordinary one.
+
+The correct test is a set-difference of the merge blob's lines against the **union** of both parents' lines:
+
+```
+$ comm -23 <(git show 04cd5e3:src/commands/hook-handlers.ts | sed 's/^[[:space:]]*//' | sort -u) \
+           <(cat <(git show 04cd5e3^1:...) <(git show 04cd5e3^2:...) | sed 's/^[[:space:]]*//' | sort -u) | wc -l
+0        # and 0 for c588f4c, and 0 for package.json in both
+```
+
+A caveat worth recording, because it produced a false positive on the first attempt: **without** whitespace normalization, `04cd5e3`'s `hook-handlers.ts` shows 14 lines "in neither parent." Those 14 lines are the ChittyID entity-type checksum block **re-indented** by the merge resolution — parent 2 contains it (`git show 04cd5e3^2:… | grep -c "Recalculate checksum"` → 1; parent 1 → 0). The content is not unique; only its indentation is. Any union test on this repo must normalize leading whitespace or it will report cosmetic reformatting as unique content.
+
+This directly falsifies the earlier warning that a rebase across `04cd5e3` "would have silently discarded the `hook-handlers.ts` checksum-correction." That code came from parent 2 via ordinary commits `7adcc1a`/`64ce4b6` and would have been replayed normally.
+
+**The surviving risk is narrower and real:** flattening a merge forces the same conflict to be **re-resolved**, because the resolution *choice* is not replayable even when no content is unique. Any `--rebase-merges` policy must be argued on re-resolution cost, not on content loss.
 
 ## 4. Actual repo integration policy
 
@@ -159,7 +172,7 @@ Contrast with `ba8bdce`, where the parent-2 diff was empty. Had a plain `git reb
 | GitHub repo settings (`gh api repos/CHITTYOS/chittycan`) | `allow_merge_commit: true`, `allow_squash_merge: true`, `allow_rebase_merge: true`, `delete_branch_on_merge: true`, `default_branch: main` |
 | Branch protection on `main` (`gh api .../branches/main/protection`) | `required_pull_request_reviews: null`, `required_status_checks.contexts: []`, `required_linear_history.enabled: false`, `enforce_admins.enabled: false` |
 
-**Interpretation:** the repo *intends* PR-based integration with CI gates (CONTRIBUTING + PR template + 5 workflows), and squash is the only strategy actually encoded anywhere in the repo. But nothing enforces it — branch protection on `main` is effectively empty, so direct pushes and local merges to `main` are permitted. All three merge strategies remain enabled on GitHub, so there is no *stated* preference at the platform level either. The gap between intent (PR + CI) and enforcement (none) is what allowed the local merge that started this.
+**Interpretation:** the repo *intends* PR-based integration with CI gates (CONTRIBUTING + PR template + 5 workflows), and squash is the only strategy actually encoded anywhere in the repo. But nothing enforces *review or CI* — so direct pushes and local merges to `main` are permitted. **Correction:** an earlier revision called protection "effectively empty," which overstates it. `main` does have protection, just not the parts that would have caught this: `gh api .../branches/main/protection` returns `required_signatures.enabled: true`, `allow_force_pushes: false`, `allow_deletions: false`, `required_conversation_resolution: true`, alongside `required_pull_request_reviews: null` and `required_status_checks.contexts: []`. Accurate wording is **no required reviews and zero required status checks**. All three merge strategies remain enabled on GitHub, so there is no *stated* preference at the platform level either. The gap between intent (PR + CI) and enforcement (none) is what allowed the local merge that started this.
 
 ## 5. What should have been done, and the guard
 
@@ -211,9 +224,10 @@ Non-empty output means a plain `git rebase` will discard those commits; switch t
 | No repo hook/workflow creates merge commits | Verified — empty `.git/hooks`, grep of `src`/`bin`/`scripts`, review of all 7 workflows |
 | No git alias rewrites `merge` on this VM | Verified — `git config --get-regexp '^alias\.'` returns nothing |
 | `-m` was passed alongside `--no-ff` | Verified by message format — subject is conventional-commit, not git's default `Merge branch '…'` |
-| 5 merge commits observed (3 reached `origin/main`); no rate claimed | Verified — `git log --merges --all` plus `--reflog` and `git fsck --unreachable` |
-| `04cd5e3` and `c588f4c` are genuine evil merges holding unique content | Verified — non-empty `git diff <sha>^1 <sha>` **and** `git diff <sha>^2 <sha>` for both |
-| `main` has no effective branch protection | Verified — `gh api repos/CHITTYOS/chittycan/branches/main/protection` |
+| 5 merge commits observed; **2** reached `origin/main`; no rate claimed | Verified — `git merge-base --is-ancestor` per sha, cross-checked against the GitHub API. **Corrected from "3"** — `ba8bdce` is not on the remote at all (HTTP 422, "No commit found for SHA") |
+| ~~`04cd5e3` and `c588f4c` are genuine evil merges holding unique content~~ | **REFUTED — this row was previously marked Verified in error.** The stated test (non-empty diff vs *both* parents) is invalid: it is non-empty for nearly every non-trivial merge. The correct union test returns **0 lines in neither parent** for both merges. See §3 — including the whitespace caveat that produced a false positive of 14 lines |
+| Merges force conflict **re-resolution** when flattened | Verified — the resolution *choice* is not replayable even when no content is unique. This is the surviving risk that replaces the refuted content-loss claim |
+| `main` lacks required reviews and required status checks | Verified — `gh api .../branches/main/protection`: `required_pull_request_reviews: null`, `required_status_checks.contexts: []`. **Corrected from "no effective branch protection"** — signatures are required, force pushes and deletions are blocked, conversation resolution is required |
 | Whether a human or an agent invoked the `--no-ff -m` merge | **Indicative, not conclusive** — 64s inter-commit cadence and conventional-commit `-m` point to automation; reflog records the effect, not the invoking process, and `user.name` is machine-global |
 | Whether any merge commit was *ever actually* dropped by a prior rebase | **Unverified** — `76942c4` is a supersede/rewrite, not a rebase casualty; reflog expiry (~90d) means older drops would be invisible. The risk is structural and demonstrated, not an observed loss |
 | Whether `04cd5e3`'s resolution was at risk in practice | **Unverified** — it reached `origin` before any local rebase crossed it |

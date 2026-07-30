@@ -471,6 +471,14 @@ Net: expect roughly 24-26 tests after the change, all still real-behaviour.
 
 ### 6.2 Commit sequence
 
+> **RESOLVED by `5a8cacb`.** The constraint described in this section no longer
+> applies: the wiring was removed, `src/index.ts:1153` is now the `webmaster`
+> command, and the tree type-checks and tests clean. Two corrections to the
+> wording below: HEAD *built* fine — `tsc` passed because the untracked file sat
+> on disk; what failed was **runtime** on a fresh clone. And the breakage never
+> reached `origin/main` (`cb9e66f` is not an ancestor of it), so no clone was
+> ever affected. Retained as the reasoning that led to the fix.
+
 The blocking constraint is real: `src/index.ts:1153` dynamically imports
 `./commands/viewport.js`, and `src/commands/viewport.ts` is untracked. **HEAD
 does not build.** Any sequence must fix that first or fix it atomically.

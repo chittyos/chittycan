@@ -1,5 +1,22 @@
 # `can viewport status` — Compliance/Readiness Audit (Phase 1 shadow observer)
 
+> **⚠️ HISTORICAL — two claims below are wrong. Read this box first.**
+>
+> 1. **Hard Blocker #2's Notion-egress premise is FALSE.** This document asserts
+>    `chittycontext/` is Notion-synced such that `shadow.jsonl` could travel
+>    off-box, while flagging its own claim as unverified. It was checked
+>    afterwards: `~/.claude/hooks/chittycontext-memory-drain.sh:7-18` reads
+>    exactly one file (`sync_queue.json`), is queue-driven rather than a
+>    directory sweep, and POSTs to MemoryCloude at
+>    `connect.chitty.cc/api/intelligence/memory/persist` — **not Notion**.
+>    `shadow.jsonl` is not in that write path. The real concern is adjacency,
+>    not egress. Superseded by `viewport-integration-design.md §5.1`.
+> 2. **The `src/index.ts:1153` wiring described below no longer exists** — it
+>    was removed by `5a8cacb`. That line is now the `webmaster` command.
+>
+> Everything else here stands. Kept as a record of the investigation, not as a
+> description of current state.
+
 Audit date: 2026-07-30. Read-only. No files modified other than this report; no
 registration submitted to any live service.
 
