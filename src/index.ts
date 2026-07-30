@@ -56,7 +56,7 @@ import {
 import { cleanup } from "./commands/cleanup.js";
 import { storeCommand } from "./commands/store.js";
 import { evaluateCommand } from "./commands/evaluate.js";
-import { marketCommand } from "./commands/market.js";
+import { marketCommand, marketList, marketAdd, marketEnable, marketDisable, marketInfo, marketSync, marketPush } from "./commands/market.js";
 import {
   proposeListCommand,
   proposeGenerateCommand,
@@ -313,20 +313,77 @@ yargs(args)
     }
   )
   .command(
-    "market <action> [cli]",
-    "ChittyMarket integration: push or pull CLI profiles",
+    "market <action> [id]",
+    "ChittyMarket: manage skill/plugin/agent artifacts (list, add, enable, disable, info, sync, push)",
     (yargs) => {
-      yargs.positional("action", {
-        describe: "Action to perform (push, pull)",
-        type: "string",
-        choices: ["push", "pull"]
-      }).positional("cli", {
-        describe: "CLI to pull profiles for",
-        type: "string"
-      });
+      yargs
+        .positional("action", {
+          describe: "Subcommand: list | add | enable | disable | info | sync | push",
+          type: "string",
+          choices: ["list", "add", "enable", "disable", "info", "sync", "push"],
+        })
+        .positional("id", {
+          describe: "Artifact ID (for enable/disable/info)",
+          type: "string",
+        })
+        // add options
+        .option("id", { type: "string", describe: "Artifact ID (e.g. skill-gws-tasks)" })
+        .option("path", { type: "string", describe: "Filesystem path to the skill/plugin directory" })
+        .option("type", { type: "string", describe: "Artifact type: skill | plugin | mcp-server | agent" })
+        .option("category", { type: "string", describe: "Category: ecosystem | productivity | legal | code | operations" })
+        .option("access", { type: "string", describe: "Access level: readonly | readwrite" })
+        .option("name", { type: "string", describe: "Display name" })
+        .option("desc", { type: "string", describe: "Short description" })
+        .option("tags", { type: "string", describe: "Comma-separated tags" })
+        // list options
+        .option("enabled", { type: "boolean", describe: "Filter to enabled artifacts" })
+        .option("disabled", { type: "boolean", describe: "Filter to disabled artifacts" })
+        // push options
+        .option("message", { type: "string", alias: "m", describe: "Git commit message for push" });
     },
     async (argv) => {
-      await marketCommand(argv.action as "push" | "pull", argv.cli as string | undefined);
+      const action = argv.action as string;
+      const positionalId = argv.id as string | undefined;
+
+      switch (action) {
+        case "list":
+          await marketList({
+            type: argv.type as string | undefined,
+            category: argv.category as string | undefined,
+            enabled: argv.enabled as boolean | undefined,
+            disabled: argv.disabled as boolean | undefined,
+          });
+          break;
+        case "add":
+          await marketAdd({
+            id: (argv.id ?? positionalId) as string,
+            artifactPath: argv.path as string,
+            type: argv.type as string | undefined,
+            category: argv.category as string | undefined,
+            access: argv.access as string | undefined,
+            name: argv.name as string | undefined,
+            description: argv.desc as string | undefined,
+            tags: argv.tags as string | undefined,
+          });
+          break;
+        case "enable":
+          await marketEnable((argv.id ?? positionalId) as string);
+          break;
+        case "disable":
+          await marketDisable((argv.id ?? positionalId) as string);
+          break;
+        case "info":
+          await marketInfo((argv.id ?? positionalId) as string);
+          break;
+        case "sync":
+          await marketSync();
+          break;
+        case "push":
+          await marketPush(argv.message as string | undefined);
+          break;
+        default:
+          await marketCommand(action, argv as Record<string, unknown>);
+      }
     }
   )
   .command(
@@ -1089,6 +1146,15 @@ yargs(args)
       const finalArgs = cmdArgs.length > 0 ? cmdArgs : extras;
       await runCommand(argv["env-file"] as string | undefined, finalArgs);
     }
+  )
+    .command(
+    "viewport <command>",
+    "Manage ChittyContext session viewport (Phase 1 shadow observer)",
+    async (yargs) => {
+      const { builder } = await import("./commands/viewport.js");
+      return builder(yargs as any);
+    },
+    async (argv) => {}
   )
   .fail((msg, err, yargs) => {
     // Self-Healing Telemetry: log crashes for chittyagent-resolve
