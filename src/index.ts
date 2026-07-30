@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { webmasterCommand } from "./commands/webmaster.js";
+import { surfaceCommand } from "./commands/surface.js";
 import { runCommand } from "./commands/run.js";
 import { scaffoldCommand } from './commands/scaffold.js';
 
@@ -1155,6 +1157,49 @@ yargs(args)
       return builder(yargs as any);
     },
     async (argv) => {}
+  )
+  .command(
+    "webmaster [subcommand] [args..]",
+    "Automated webmaster capability engine (alias: wm)",
+    (yargs) =>
+      yargs
+        .positional("subcommand", {
+          describe: "Subcommand: harvest | check | flag | report",
+          type: "string"
+        })
+        .option("url", { type: "string", describe: "Target URL" })
+        .option("content", { type: "string", describe: "Optional pre-harvested markdown" })
+        .option("by", { type: "string", describe: "User ID / handle for rewards" }),
+    async (argv) => {
+      await webmasterCommand(argv);
+    }
+  )
+  .command(
+    "wm [subcommand] [args..]",
+    "Automated webmaster capability engine (short alias)",
+    (yargs) => yargs,
+    async (argv) => {
+      await webmasterCommand(argv);
+    }
+  )
+  .command(
+    "surface [subcommand] [domain]",
+    "Cross-surface capability mold compiler & hot-loader",
+    (yargs) =>
+      yargs
+        .positional("subcommand", {
+          describe: "Subcommand: compile | hotload",
+          type: "string"
+        })
+        .positional("domain", {
+          describe: "Domain name (e.g. webmaster)",
+          type: "string"
+        })
+        .option("target", { type: "string", describe: "Target mold: openai-mcp | openapi-3.1 | claude-skill" })
+        .option("portal", { type: "string", describe: "Target MCP Portal URL" }),
+    async (argv) => {
+      await surfaceCommand(argv);
+    }
   )
   .fail((msg, err, yargs) => {
     // Self-Healing Telemetry: log crashes for chittyagent-resolve
