@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { webmasterCommand } from "./commands/webmaster.js";
+import { surfaceCommand } from "./commands/surface.js";
+import { runCommand } from "./commands/run.js";
 import { scaffoldCommand } from './commands/scaffold.js';
 
 import yargs from "yargs";
@@ -55,7 +58,7 @@ import {
 import { cleanup } from "./commands/cleanup.js";
 import { storeCommand } from "./commands/store.js";
 import { evaluateCommand } from "./commands/evaluate.js";
-import { marketCommand } from "./commands/market.js";
+import { marketCommand, marketList, marketAdd, marketEnable, marketDisable, marketInfo, marketSync, marketPush } from "./commands/market.js";
 import {
   proposeListCommand,
   proposeGenerateCommand,
@@ -312,20 +315,77 @@ yargs(args)
     }
   )
   .command(
-    "market <action> [cli]",
-    "ChittyMarket integration: push or pull CLI profiles",
+    "market <action> [id]",
+    "ChittyMarket: manage skill/plugin/agent artifacts (list, add, enable, disable, info, sync, push)",
     (yargs) => {
-      yargs.positional("action", {
-        describe: "Action to perform (push, pull)",
-        type: "string",
-        choices: ["push", "pull"]
-      }).positional("cli", {
-        describe: "CLI to pull profiles for",
-        type: "string"
-      });
+      yargs
+        .positional("action", {
+          describe: "Subcommand: list | add | enable | disable | info | sync | push",
+          type: "string",
+          choices: ["list", "add", "enable", "disable", "info", "sync", "push"],
+        })
+        .positional("id", {
+          describe: "Artifact ID (for enable/disable/info)",
+          type: "string",
+        })
+        // add options
+        .option("id", { type: "string", describe: "Artifact ID (e.g. skill-gws-tasks)" })
+        .option("path", { type: "string", describe: "Filesystem path to the skill/plugin directory" })
+        .option("type", { type: "string", describe: "Artifact type: skill | plugin | mcp-server | agent" })
+        .option("category", { type: "string", describe: "Category: ecosystem | productivity | legal | code | operations" })
+        .option("access", { type: "string", describe: "Access level: readonly | readwrite" })
+        .option("name", { type: "string", describe: "Display name" })
+        .option("desc", { type: "string", describe: "Short description" })
+        .option("tags", { type: "string", describe: "Comma-separated tags" })
+        // list options
+        .option("enabled", { type: "boolean", describe: "Filter to enabled artifacts" })
+        .option("disabled", { type: "boolean", describe: "Filter to disabled artifacts" })
+        // push options
+        .option("message", { type: "string", alias: "m", describe: "Git commit message for push" });
     },
     async (argv) => {
-      await marketCommand(argv.action as "push" | "pull", argv.cli as string | undefined);
+      const action = argv.action as string;
+      const positionalId = argv.id as string | undefined;
+
+      switch (action) {
+        case "list":
+          await marketList({
+            type: argv.type as string | undefined,
+            category: argv.category as string | undefined,
+            enabled: argv.enabled as boolean | undefined,
+            disabled: argv.disabled as boolean | undefined,
+          });
+          break;
+        case "add":
+          await marketAdd({
+            id: (argv.id ?? positionalId) as string,
+            artifactPath: argv.path as string,
+            type: argv.type as string | undefined,
+            category: argv.category as string | undefined,
+            access: argv.access as string | undefined,
+            name: argv.name as string | undefined,
+            description: argv.desc as string | undefined,
+            tags: argv.tags as string | undefined,
+          });
+          break;
+        case "enable":
+          await marketEnable((argv.id ?? positionalId) as string);
+          break;
+        case "disable":
+          await marketDisable((argv.id ?? positionalId) as string);
+          break;
+        case "info":
+          await marketInfo((argv.id ?? positionalId) as string);
+          break;
+        case "sync":
+          await marketSync();
+          break;
+        case "push":
+          await marketPush(argv.message as string | undefined);
+          break;
+        default:
+          await marketCommand(action, argv as Record<string, unknown>);
+      }
     }
   )
   .command(
@@ -1059,6 +1119,80 @@ yargs(args)
       }),
     async (argv) => {
       await scaffoldCommand(argv.type);
+    }
+  )
+  
+  .command(
+    "run [cmd...]",
+    "Run a process with ChittySecrets injected via ChittyConnect",
+    (yargs) =>
+      yargs
+        .option("env-file", {
+          type: "string",
+          description: "Path to environment file (e.g., .env.chitty)"
+        })
+        .positional("cmd", {
+          describe: "Command and arguments to run",
+          type: "string",
+          array: true
+        }),
+    async (argv) => {
+      // yargs might pass '--' args into '_' or we can parse it from process.argv
+      // A quick hack: yargs parses positional into argv.cmd
+      // But if there's a --, yargs puts it in argv._ 
+      // It's safer to just pass argv['env-file'] and argv.cmd.
+      const cmdArgs = (argv.cmd as string[]) || [];
+      // Also grab anything after '--' if it's there
+      const extras = (argv._.slice(1) as string[]) || [];
+      // If cmdArgs is empty, maybe they did 'can run -- npm run deploy'
+      const finalArgs = cmdArgs.length > 0 ? cmdArgs : extras;
+      await runCommand(argv["env-file"] as string | undefined, finalArgs);
+    }
+  )
+  .command(
+    "webmaster [subcommand] [args..]",
+    "Automated webmaster capability engine (alias: wm)",
+    (yargs) =>
+      yargs
+        .positional("subcommand", { describe: "Subcommand: harvest | check | flag | report", type: "string" })
+        .option("url", { type: "string", describe: "Target URL" })
+        .option("content", { type: "string", describe: "Optional pre-harvested markdown" })
+        .option("by", { type: "string", describe: "User ID / handle for rewards" })
+        .option("format", { type: "string", describe: "Report output format" })
+        .option("out", { type: "string", describe: "Report output path" })
+        .strict(false),
+    async (argv) => {
+      await webmasterCommand(argv);
+    }
+  )
+  .command(
+    "wm [subcommand] [args..]",
+    "Automated webmaster capability engine (short alias)",
+    (yargs) =>
+      yargs
+        .positional("subcommand", { describe: "Subcommand: harvest | check | flag | report", type: "string" })
+        .option("url", { type: "string", describe: "Target URL" })
+        .option("content", { type: "string", describe: "Optional pre-harvested markdown" })
+        .option("by", { type: "string", describe: "User ID / handle for rewards" })
+        .option("format", { type: "string", describe: "Report output format" })
+        .option("out", { type: "string", describe: "Report output path" })
+        .strict(false),
+    async (argv) => {
+      await webmasterCommand(argv);
+    }
+  )
+  .command(
+    "surface [subcommand] [domain]",
+    "Cross-surface capability mold compiler & hot-loader",
+    (yargs) =>
+      yargs
+        .positional("subcommand", { describe: "Subcommand: compile | hotload", type: "string" })
+        .positional("domain", { describe: "Domain name (e.g. webmaster)", type: "string" })
+        .option("target", { type: "string", describe: "Target mold: openai-mcp | openapi-3.1 | claude-skill" })
+        .option("portal", { type: "string", describe: "Target MCP Portal URL" })
+        .strict(false),
+    async (argv) => {
+      await surfaceCommand(argv);
     }
   )
   .fail((msg, err, yargs) => {
