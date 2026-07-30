@@ -93,9 +93,12 @@ handler)`, and some as yargs command modules (`src/commands/viewport.ts` exports
 | `can viewport status` | ChittyContext shadow-observer session view |
 | `can store` / `can evaluate` / `can learn` / `can architect` | Store, preference evaluation, learning, goal synthesis |
 
-The table is a summary — `src/index.ts` is authoritative. `can wm` is an alias of
-`can webmaster`; `webmaster` and `surface` opt out of strict parsing with
-`.strict(false)` so they can forward unknown flags.
+The table is a summary — `src/index.ts` is authoritative. `wm` is described as an
+alias of `webmaster` but is implemented as a second, fully duplicated `.command()`
+registration pointing at the same `webmasterCommand` handler, not a yargs
+`.alias()` — edit both blocks or they drift apart. `webmaster`, `wm`, and `surface`
+each opt out of strict parsing with `.strict(false)` so they can forward unknown
+flags to their handlers.
 
 ### MCP Server
 
