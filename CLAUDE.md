@@ -91,7 +91,8 @@ handler)`, and some as yargs command modules (`src/commands/viewport.ts` exports
 | `can run [cmd...]` | Execute a tracked command |
 | `can open <name> [view]` | Open a configured remote |
 | `can viewport status` | ChittyContext shadow-observer session view |
-| `can store` / `can evaluate` / `can learn` / `can architect` | Store, preference evaluation, learning, goal synthesis |
+| `can export [args..]` | Store command (`storeCommand`) — registered as `export`, not `store` |
+| `can evaluate` / `can learn` / `can architect` | Preference evaluation, learning, goal synthesis |
 
 The table is a summary — `src/index.ts` is authoritative. `wm` is described as an
 alias of `webmaster` but is implemented as a second, fully duplicated `.command()`

@@ -27,14 +27,21 @@ from pathlib import Path
 HOME = Path.home()
 OUTPUT_PATH = HOME / ".claude" / "chittycontext" / "shadow.jsonl"
 
-# (source, root directory, glob pattern)
-KINDS = ("session", "archived", "subagent")
+# (source, root directory, glob pattern, kind override or None to classify by path)
+KINDS = ("session", "archived", "subagent", "history")
 
+# `history.jsonl` files are append-only global command logs, NOT session
+# transcripts: they are created once and never deleted, and they are touched on
+# every CLI invocation. Classifying them by path would land them in "session"
+# (they sit directly in `root`, so there is no dot-component and no
+# `subagents/`), which would both inflate the active count by a constant and let
+# a mere CLI invocation masquerade as live session activity. They get an
+# explicit kind instead.
 SOURCES = [
-    ("claude", HOME / ".claude" / "projects", "**/*.jsonl"),
-    ("codex", HOME / ".codex" / "sessions", "**/*.jsonl"),
-    ("codex", HOME / ".codex", "history.jsonl"),
-    ("gemini", HOME / ".gemini" / "antigravity-cli", "history.jsonl"),
+    ("claude", HOME / ".claude" / "projects", "**/*.jsonl", None),
+    ("codex", HOME / ".codex" / "sessions", "**/*.jsonl", None),
+    ("codex", HOME / ".codex", "history.jsonl", "history"),
+    ("gemini", HOME / ".gemini" / "antigravity-cli", "history.jsonl", "history"),
 ]
 
 
@@ -83,6 +90,9 @@ def kind_for(path: Path, root: Path) -> str:
       "archived"  -> under a dot-directory component (e.g. `.ingested/`)
       "subagent"  -> under a `subagents/` directory
       "session"   -> live project/session transcript
+
+    Sources that are never session transcripts regardless of path (append-only
+    history logs) carry an explicit kind in SOURCES and never reach this.
     """
     try:
         parts = path.relative_to(root).parts[:-1]
@@ -104,7 +114,7 @@ def discover(line_count_mode: str = "sessions"):
     """
     seen: set[str] = set()
     records = []
-    for source, root, pattern in SOURCES:
+    for source, root, pattern, kind_override in SOURCES:
         if not root.is_dir():
             continue  # missing source dir -> skip, no crash
         try:
@@ -124,7 +134,7 @@ def discover(line_count_mode: str = "sessions"):
             seen.add(resolved)
             record = {
                 "source": source,
-                "kind": kind_for(path, root),
+                "kind": kind_override or kind_for(path, root),
                 "path": resolved,
                 "size_bytes": st.st_size,
                 "mtime": iso_mtime(st),

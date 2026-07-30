@@ -104,7 +104,7 @@ describe("viewport-observer.py — discovery and schema", () => {
 
     for (const rec of records) {
       expect(rec.source).toMatch(/^(claude|codex|gemini)$/);
-      expect(rec.kind).toMatch(/^(session|archived|subagent)$/);
+      expect(rec.kind).toMatch(/^(session|archived|subagent|history)$/);
       expect(path.isAbsolute(rec.path)).toBe(true);
       expect(typeof rec.size_bytes).toBe("number");
       expect(rec.mtime.endsWith("+00:00")).toBe(true);
@@ -125,7 +125,7 @@ describe("viewport-observer.py — discovery and schema", () => {
       a[r2.kind] = (a[r2.kind] || 0) + 1;
       return a;
     }, {});
-    expect(byKind).toEqual({ session: 5, archived: 1, subagent: 1 });
+    expect(byKind).toEqual({ session: 3, archived: 1, subagent: 1, history: 2 });
   });
 
   it("classifies dot-directory components as archived and subagents/ as subagent", () => {
@@ -238,7 +238,7 @@ describe("viewport-observer.py — write semantics", () => {
     const r = run(["--output", outPath]);
     expect(r.stderr).toContain("wrote 7 records");
     expect(r.stderr).toContain("by source: claude=4, codex=2, gemini=1");
-    expect(r.stderr).toContain("by kind:   session=5, archived=1, subagent=1");
+    expect(r.stderr).toContain("by kind:   session=3, archived=1, subagent=1, history=2");
   });
 
   it("copies no transcript content into the snapshot", () => {
@@ -254,7 +254,15 @@ describe("viewport-observer.py -> viewport status (producer/consumer contract)",
     run(["--output", outPath]);
     const records = readOut();
     const sessions = records.filter((r) => r.kind === "session").length;
-    expect(sessions).toBe(5);
+    // 2 claude project transcripts + 1 codex rollout. The two history.jsonl
+    // files are append-only command logs, not sessions, and must not inflate
+    // this count — see the `history` kind in the observer's SOURCES.
+    expect(sessions).toBe(3);
+    const history = records.filter((r) => r.kind === "history");
+    expect(history.map((r) => r.path.replace(tmpHome, "")).sort()).toEqual([
+      "/.codex/history.jsonl",
+      "/.gemini/antigravity-cli/history.jsonl",
+    ]);
     // Every record carries a source the consumer recognizes.
     for (const rec of records) {
       expect(["claude", "codex", "gemini"]).toContain(rec.source);

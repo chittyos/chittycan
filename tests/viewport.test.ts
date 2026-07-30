@@ -275,6 +275,64 @@ describe("viewport status — missing shadow file", () => {
   });
 });
 
+describe("viewport status — failure signalling", () => {
+  it("exits non-zero when the shadow file cannot be read", async () => {
+    fs.writeFileSync(shadowPath, JSON.stringify(sessionRecord()) + "\n", "utf-8");
+    fs.chmodSync(shadowPath, 0o000);
+    try {
+      const out = await runStatus();
+      expect(out).toMatch(/Failed to read shadow state/);
+      // A caller chaining `can viewport status && can sync run` must be able to
+      // tell a total read failure from a clean report.
+      expect(process.exitCode).toBe(1);
+    } finally {
+      fs.chmodSync(shadowPath, 0o600);
+      process.exitCode = 0;
+    }
+  });
+
+  it("survives a bare `null` line instead of aborting the whole report", async () => {
+    // JSON.parse("null") succeeds and returns null; reading a property off it
+    // throws a TypeError that would escape the per-line try and destroy every
+    // count. One bad line must cost one record, not the report.
+    fs.writeFileSync(
+      shadowPath,
+      [
+        JSON.stringify(sessionRecord()),
+        "null",
+        "42",
+        '"a string"',
+        JSON.stringify(sessionRecord({ session: "second" })),
+      ].join("\n") + "\n",
+      "utf-8"
+    );
+    const out = await runStatus();
+    expect(out).toContain("Active Transcripts Tracked: 2");
+    expect(out).toMatch(/Skipped 3 malformed line\(s\)/);
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+});
+
+describe("viewport status — history logs are not sessions", () => {
+  it("buckets kind=history separately and keeps it out of the active count", async () => {
+    // ~/.codex/history.jsonl is touched on every codex invocation. If it counted
+    // as a session, the active count would never reach 0 and a mere CLI
+    // invocation would masquerade as live session activity.
+    writeShadow([
+      sessionRecord({ mtime: iso(6 * 60 * 60 * 1000) }),
+      sessionRecord({ source: "codex", kind: "history", session: "history", mtime: iso(60 * 1000) }),
+      sessionRecord({ source: "gemini", kind: "history", session: "history", mtime: iso(60 * 1000) }),
+    ]);
+    const out = await runStatus();
+    expect(out).toContain("Active Transcripts Tracked: 1");
+    expect(out).toContain("Gemini: 0 sessions");
+    expect(out).toContain("Append-only history logs (not sessions): 2");
+    // Liveness must follow the real session, not the freshly-touched history log.
+    expect(out).toMatch(/Newest active session activity: 6h/);
+    expect(out).not.toMatch(/Unclassified records/);
+  });
+});
+
 describe("viewport — command guard", () => {
   it("the top-level handler fails closed when no subcommand is given", () => {
     expect(() => handler()).toThrow(/must specify a viewport command/i);
