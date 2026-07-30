@@ -4,6 +4,15 @@ import fs from "fs";
 import path from "path";
 import https from "https";
 
+/**
+ * Strip CR/LF and other control characters from untrusted text before it is
+ * written to the console, so a crafted env-file entry cannot forge log lines.
+ */
+function sanitizeForLog(input: string): string {
+  // eslint-disable-next-line no-control-regex
+  return String(input).replace(/[\u0000-\u001F\u007F]/g, " ");
+}
+
 export async function runCommand(envFile: string | undefined, cmdArgs: string[]): Promise<void> {
   if (cmdArgs.length === 0) {
     console.error(chalk.red("Usage: can run [--env-file=<file>] -- <command> [args...]"));
@@ -55,14 +64,18 @@ export async function runCommand(envFile: string | undefined, cmdArgs: string[])
       }
       
       const secretPath = value.replace("chittysecrets:///", "");
-      console.log(chalk.cyan(`Resolving secret for ${key} -> ${secretPath}...`));
-      
+      // Values come from a user-supplied env file, so strip CR/LF and other
+      // control characters before logging — otherwise a crafted entry can
+      // forge log lines (CodeQL js/log-injection).
+      const safePath = sanitizeForLog(secretPath);
+      console.log(chalk.cyan(`Resolving secret for ${sanitizeForLog(key)} -> ${safePath}...`));
+
       try {
         const secretValue = await resolveSecret(secretPath, chittyToken);
         env[key] = secretValue;
         resolvedCount++;
       } catch (e: any) {
-        console.error(chalk.red(`✗ Failed to resolve secret ${secretPath}: ${e.message}`));
+        console.error(chalk.red(`✗ Failed to resolve secret ${safePath}: ${sanitizeForLog(e?.message ?? String(e))}`));
         process.exit(1);
       }
     }

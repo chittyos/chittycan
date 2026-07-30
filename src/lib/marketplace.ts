@@ -220,12 +220,19 @@ function toggleHook(artifact: MarketplaceArtifact, enabled: boolean): void {
   const candidates = [`hookify.${name}.local.md`, `${name}.md`];
   for (const fname of candidates) {
     const fpath = fs.existsSync(hooksDir) ? path.join(hooksDir, fname) : path.join(CLAUDE_HOOKS_DIR, fname);
-    if (fs.existsSync(fpath)) {
-      let content = fs.readFileSync(fpath, "utf8");
-      content = content.replace(/^enabled:\s*(true|false)/m, `enabled: ${enabled}`);
-      fs.writeFileSync(fpath, content, "utf8");
-      return;
+    // Read directly rather than existsSync-then-read: the check/use gap is a
+    // TOCTOU race (CodeQL js/file-system-race). ENOENT means "not this
+    // candidate" and we fall through to the next one.
+    let content: string;
+    try {
+      content = fs.readFileSync(fpath, "utf8");
+    } catch (e: any) {
+      if (e?.code === "ENOENT") continue;
+      throw e;
     }
+    content = content.replace(/^enabled:\s*(true|false)/m, `enabled: ${enabled}`);
+    fs.writeFileSync(fpath, content, "utf8");
+    return;
   }
 }
 
