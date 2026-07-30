@@ -137,6 +137,98 @@ export function addArtifact(
   return { added: true };
 }
 
+// ---------------------------------------------------------------------------
+// Per-type enable/disable side effects
+// ---------------------------------------------------------------------------
+
+const CH1TTY_SERVERS = path.join(
+  os.homedir(),
+  "projects", "github.com", "CHITTYOS", "ch1tty", "servers.json"
+);
+const CLAUDE_SETTINGS = path.join(os.homedir(), ".claude", "settings.json");
+const PLUGIN_BLOCKLIST = path.join(os.homedir(), ".claude", "plugins", "blocklist.json");
+const CLAUDE_AGENTS_DIR = path.join(os.homedir(), ".claude", "agents");
+const CLAUDE_HOOKS_DIR = path.join(os.homedir(), ".claude", "hooks");
+
+function toggleSkill(artifact: MarketplaceArtifact, enabled: boolean): void {
+  const skillPath = resolveHome(artifact.standalone?.path ?? "");
+  if (!skillPath) return;
+  const skillMd = path.join(skillPath, "SKILL.md");
+  const disabledMd = path.join(skillPath, "SKILL.md.disabled");
+  if (enabled && fs.existsSync(disabledMd)) fs.moveSync(disabledMd, skillMd);
+  else if (!enabled && fs.existsSync(skillMd)) fs.moveSync(skillMd, disabledMd);
+}
+
+function toggleMcpServer(artifact: MarketplaceArtifact, enabled: boolean): void {
+  if (!fs.existsSync(CH1TTY_SERVERS)) return;
+  const data = fs.readJsonSync(CH1TTY_SERVERS) as { servers: Record<string, unknown>[] };
+  const serverId = artifact.ch1tty?.serverId ?? artifact.id;
+  const server = data.servers.find((s): s is Record<string, unknown> => "id" in s && s.id === serverId);
+  if (server) {
+    server.enabled = enabled;
+    fs.writeJsonSync(CH1TTY_SERVERS, data, { spaces: 2 });
+  }
+}
+
+function toggleOfficialPlugin(artifact: MarketplaceArtifact, enabled: boolean): void {
+  if (!fs.existsSync(CLAUDE_SETTINGS)) return;
+  const settings = fs.readJsonSync(CLAUDE_SETTINGS) as Record<string, unknown>;
+  const enabledPlugins = (settings.enabledPlugins ?? {}) as Record<string, boolean>;
+  // Match by id or by any key containing the artifact id
+  const key = Object.keys(enabledPlugins).find((k) => k.includes(artifact.id)) ?? artifact.id;
+  enabledPlugins[key] = enabled;
+  settings.enabledPlugins = enabledPlugins;
+  fs.writeJsonSync(CLAUDE_SETTINGS, settings, { spaces: 2 });
+}
+
+function toggleLocalPlugin(artifact: MarketplaceArtifact, enabled: boolean): void {
+  if (!fs.existsSync(PLUGIN_BLOCKLIST)) {
+    if (!enabled) {
+      // Create blocklist with this entry
+      fs.ensureDirSync(path.dirname(PLUGIN_BLOCKLIST));
+      fs.writeJsonSync(PLUGIN_BLOCKLIST, {
+        fetchedAt: new Date().toISOString(),
+        plugins: [{ plugin: artifact.id, added_at: new Date().toISOString(), reason: "disabled-via-market", text: "" }]
+      }, { spaces: 2 });
+    }
+    return;
+  }
+  const blocklist = fs.readJsonSync(PLUGIN_BLOCKLIST) as { fetchedAt: string; plugins: { plugin: string }[] };
+  if (enabled) {
+    blocklist.plugins = blocklist.plugins.filter((p) => p.plugin !== artifact.id);
+  } else {
+    if (!blocklist.plugins.find((p) => p.plugin === artifact.id)) {
+      blocklist.plugins.push({ plugin: artifact.id, added_at: new Date().toISOString(), reason: "disabled-via-market", text: "" } as never);
+    }
+  }
+  fs.writeJsonSync(PLUGIN_BLOCKLIST, blocklist, { spaces: 2 });
+}
+
+function toggleAgent(artifact: MarketplaceArtifact, enabled: boolean): void {
+  const agentDir = resolveHome(artifact.standalone?.path ?? "") || CLAUDE_AGENTS_DIR;
+  const name = artifact.id.replace(/^agent-/, "");
+  const active = path.join(agentDir, `${name}.md`);
+  const disabled = path.join(agentDir, `${name}.md.disabled`);
+  if (enabled && fs.existsSync(disabled)) fs.moveSync(disabled, active);
+  else if (!enabled && fs.existsSync(active)) fs.moveSync(active, disabled);
+}
+
+function toggleHook(artifact: MarketplaceArtifact, enabled: boolean): void {
+  // Hookify rule: set `enabled:` in YAML frontmatter
+  const hooksDir = resolveHome(artifact.standalone?.path ?? "") || CLAUDE_HOOKS_DIR;
+  const name = artifact.id.replace(/^hook-/, "");
+  const candidates = [`hookify.${name}.local.md`, `${name}.md`];
+  for (const fname of candidates) {
+    const fpath = fs.existsSync(hooksDir) ? path.join(hooksDir, fname) : path.join(CLAUDE_HOOKS_DIR, fname);
+    if (fs.existsSync(fpath)) {
+      let content = fs.readFileSync(fpath, "utf8");
+      content = content.replace(/^enabled:\s*(true|false)/m, `enabled: ${enabled}`);
+      fs.writeFileSync(fpath, content, "utf8");
+      return;
+    }
+  }
+}
+
 export function setEnabled(
   data: Marketplace,
   id: string,
@@ -144,19 +236,32 @@ export function setEnabled(
 ): { ok: boolean; reason?: string } {
   const artifact = findArtifact(data, id);
   if (!artifact) return { ok: false, reason: `${id} not found` };
-  artifact.enabled = enabled;
 
-  const skillPath = resolveHome(artifact.standalone?.path ?? "");
-  if (artifact.type === "skill" && skillPath) {
-    const skillMd = path.join(skillPath, "SKILL.md");
-    const disabledMd = path.join(skillPath, "SKILL.md.disabled");
-    if (enabled && fs.existsSync(disabledMd)) {
-      fs.moveSync(disabledMd, skillMd);
-    } else if (!enabled && fs.existsSync(skillMd)) {
-      fs.moveSync(skillMd, disabledMd);
-    }
+  // Apply type-specific side effects
+  switch (artifact.type) {
+    case "skill":
+      toggleSkill(artifact, enabled);
+      break;
+    case "mcp-server":
+      toggleMcpServer(artifact, enabled);
+      break;
+    case "plugin":
+      // Distinguish official (has ch1tty ref in enabledPlugins) vs local
+      if (artifact.ch1tty?.available || artifact.installMode === "ch1tty") {
+        toggleOfficialPlugin(artifact, enabled);
+      } else {
+        toggleLocalPlugin(artifact, enabled);
+      }
+      break;
+    case "agent":
+      toggleAgent(artifact, enabled);
+      break;
+    case "hook":
+      toggleHook(artifact, enabled);
+      break;
   }
 
+  artifact.enabled = enabled;
   return { ok: true };
 }
 

@@ -136,24 +136,40 @@ export async function marketAdd(opts: {
 
 export async function marketEnable(id: string): Promise<void> {
   const data = loadMarketplace();
+  const artifact = data.artifacts.find((a): a is MarketplaceArtifact => "id" in a && (a as MarketplaceArtifact).id === id) as MarketplaceArtifact | undefined;
+  const typeHint = artifact ? ` [${artifact.type}]` : "";
+
   const result = setEnabled(data, id, true);
   if (!result.ok) {
     console.log(chalk.red(`❌ ${result.reason}`));
     return;
   }
   saveMarketplace(data);
-  console.log(chalk.green(`✅ Enabled: ${id}`));
+  console.log(chalk.green(`✅ Enabled: ${id}${typeHint}`));
+  if (artifact?.type === "mcp-server") console.log(chalk.dim("   → Updated ch1tty/servers.json"));
+  if (artifact?.type === "skill") console.log(chalk.dim("   → Renamed SKILL.md.disabled → SKILL.md"));
+  if (artifact?.type === "plugin") console.log(chalk.dim("   → Updated settings.json / blocklist"));
+  if (artifact?.type === "agent") console.log(chalk.dim("   → Renamed <name>.md.disabled → <name>.md"));
+  if (artifact?.type === "hook") console.log(chalk.dim("   → Set enabled: true in hookify frontmatter"));
 }
 
 export async function marketDisable(id: string): Promise<void> {
   const data = loadMarketplace();
+  const artifact = data.artifacts.find((a): a is MarketplaceArtifact => "id" in a && (a as MarketplaceArtifact).id === id) as MarketplaceArtifact | undefined;
+  const typeHint = artifact ? ` [${artifact.type}]` : "";
+
   const result = setEnabled(data, id, false);
   if (!result.ok) {
     console.log(chalk.red(`❌ ${result.reason}`));
     return;
   }
   saveMarketplace(data);
-  console.log(chalk.yellow(`⛔ Disabled: ${id}`));
+  console.log(chalk.yellow(`⛔ Disabled: ${id}${typeHint}`));
+  if (artifact?.type === "mcp-server") console.log(chalk.dim("   → Updated ch1tty/servers.json"));
+  if (artifact?.type === "skill") console.log(chalk.dim("   → Renamed SKILL.md → SKILL.md.disabled"));
+  if (artifact?.type === "plugin") console.log(chalk.dim("   → Updated settings.json / blocklist"));
+  if (artifact?.type === "agent") console.log(chalk.dim("   → Renamed <name>.md → <name>.md.disabled"));
+  if (artifact?.type === "hook") console.log(chalk.dim("   → Set enabled: false in hookify frontmatter"));
 }
 
 // ---------------------------------------------------------------------------
