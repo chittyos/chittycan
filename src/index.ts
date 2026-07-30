@@ -1149,15 +1149,6 @@ yargs(args)
       await runCommand(argv["env-file"] as string | undefined, finalArgs);
     }
   )
-    .command(
-    "viewport <command>",
-    "Manage ChittyContext session viewport (Phase 1 shadow observer)",
-    async (yargs) => {
-      const { builder } = await import("./commands/viewport.js");
-      return builder(yargs as any);
-    },
-    async (argv) => {}
-  )
   .command(
     "webmaster [subcommand] [args..]",
     "Automated webmaster capability engine (alias: wm)",
