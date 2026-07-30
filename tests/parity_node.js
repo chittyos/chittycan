@@ -15,16 +15,21 @@
 // defined here and threw ReferenceError before the suite could start.
 import OpenAI from "openai";
 
-// Configure
-const client = new OpenAI({
-  apiKey: process.env.CHITTYCAN_TOKEN || process.env.OPENAI_API_KEY,
-  baseURL: process.env.OPENAI_API_BASE || "https://connect.chitty.cc/v1"
-});
+// Check credentials BEFORE constructing the client. The OpenAI SDK throws
+// `OpenAIError: Missing credentials` from its constructor, so the skip below
+// was unreachable and an unconfigured run failed instead of skipping.
+const apiKey = process.env.CHITTYCAN_TOKEN || process.env.OPENAI_API_KEY;
 
-if (!client.apiKey) {
+if (!apiKey) {
   console.log("SKIP: CHITTYCAN_TOKEN or OPENAI_API_KEY not set");
   process.exit(0);
 }
+
+// Configure
+const client = new OpenAI({
+  apiKey,
+  baseURL: process.env.OPENAI_API_BASE || "https://connect.chitty.cc/v1"
+});
 
 console.log(`Testing OpenAI compatibility at: ${client.baseURL}`);
 console.log("=".repeat(60));
