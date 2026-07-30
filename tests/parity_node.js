@@ -11,7 +11,9 @@
  *   node tests/parity_node.js
  */
 
-const OpenAI = require("openai");
+// package.json sets "type": "module", so this file is ESM — require() is not
+// defined here and threw ReferenceError before the suite could start.
+import OpenAI from "openai";
 
 // Configure
 const client = new OpenAI({
