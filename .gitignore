@@ -47,3 +47,7 @@ config.json
 .claude/worktrees/
 src/.claude/
 
+
+# Python bytecode (parity test harness)
+__pycache__/
+*.pyc
