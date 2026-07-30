@@ -1163,13 +1163,13 @@ yargs(args)
     "Automated webmaster capability engine (alias: wm)",
     (yargs) =>
       yargs
-        .positional("subcommand", {
-          describe: "Subcommand: harvest | check | flag | report",
-          type: "string"
-        })
+        .positional("subcommand", { describe: "Subcommand: harvest | check | flag | report", type: "string" })
         .option("url", { type: "string", describe: "Target URL" })
         .option("content", { type: "string", describe: "Optional pre-harvested markdown" })
-        .option("by", { type: "string", describe: "User ID / handle for rewards" }),
+        .option("by", { type: "string", describe: "User ID / handle for rewards" })
+        .option("format", { type: "string", describe: "Report output format" })
+        .option("out", { type: "string", describe: "Report output path" })
+        .strict(false),
     async (argv) => {
       await webmasterCommand(argv);
     }
@@ -1177,7 +1177,15 @@ yargs(args)
   .command(
     "wm [subcommand] [args..]",
     "Automated webmaster capability engine (short alias)",
-    (yargs) => yargs,
+    (yargs) =>
+      yargs
+        .positional("subcommand", { describe: "Subcommand: harvest | check | flag | report", type: "string" })
+        .option("url", { type: "string", describe: "Target URL" })
+        .option("content", { type: "string", describe: "Optional pre-harvested markdown" })
+        .option("by", { type: "string", describe: "User ID / handle for rewards" })
+        .option("format", { type: "string", describe: "Report output format" })
+        .option("out", { type: "string", describe: "Report output path" })
+        .strict(false),
     async (argv) => {
       await webmasterCommand(argv);
     }
@@ -1187,16 +1195,11 @@ yargs(args)
     "Cross-surface capability mold compiler & hot-loader",
     (yargs) =>
       yargs
-        .positional("subcommand", {
-          describe: "Subcommand: compile | hotload",
-          type: "string"
-        })
-        .positional("domain", {
-          describe: "Domain name (e.g. webmaster)",
-          type: "string"
-        })
+        .positional("subcommand", { describe: "Subcommand: compile | hotload", type: "string" })
+        .positional("domain", { describe: "Domain name (e.g. webmaster)", type: "string" })
         .option("target", { type: "string", describe: "Target mold: openai-mcp | openapi-3.1 | claude-skill" })
-        .option("portal", { type: "string", describe: "Target MCP Portal URL" }),
+        .option("portal", { type: "string", describe: "Target MCP Portal URL" })
+        .strict(false),
     async (argv) => {
       await surfaceCommand(argv);
     }
