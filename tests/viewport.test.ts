@@ -276,7 +276,13 @@ describe("viewport status — missing shadow file", () => {
 });
 
 describe("viewport status — failure signalling", () => {
-  it("exits non-zero when the shadow file cannot be read", async () => {
+  // chmod 000 does not stop root — it ignores the permission bits, the read
+  // succeeds, and this test then fails for a reason that has nothing to do with
+  // the behavior under test. GitHub runners are non-root so CI never saw it;
+  // `docker run node:20 npm test` does. Skip explicitly rather than assert
+  // something untrue of the environment, and name why in the skip.
+  const runningAsRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  it.skipIf(runningAsRoot)("exits non-zero when the shadow file cannot be read", async () => {
     fs.writeFileSync(shadowPath, JSON.stringify(sessionRecord()) + "\n", "utf-8");
     fs.chmodSync(shadowPath, 0o000);
     try {

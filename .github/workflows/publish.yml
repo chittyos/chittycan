@@ -24,6 +24,17 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
 
+      # Node 20 ships npm 10.9.x. npm trusted publishing (tokenless OIDC) needs
+      # >= 11.5.1 (npm 12 requires Node >=22 and cannot install here), and this job already grants id-token: write — so the only
+      # thing standing between this workflow and a credential-free publish is
+      # the bundled npm being too old. Upgrading also keeps the NODE_AUTH_TOKEN
+      # path below working unchanged, so whichever route is configured on the
+      # npmjs side, this job can take it.
+      - name: Upgrade npm for trusted publishing support
+        run: |
+          npm install -g npm@^11
+          npm --version
+
       - name: Install dependencies
         run: npm ci
 
@@ -33,6 +44,14 @@ jobs:
       - name: Test
         run: npm test
 
+      # Two supported auth routes, in preference order:
+      #   1. Trusted publishing — configure CHITTYOS/chittycan + this workflow as
+      #      a trusted publisher at npmjs.com. No secret exists to leak or
+      #      rotate; OIDC is exchanged at publish time. NODE_AUTH_TOKEN is simply
+      #      empty and unused.
+      #   2. NPM_TOKEN — a granular token in the org/repo secret, used when no
+      #      trusted publisher is registered.
+      # Run 30600637120 failed ENEEDAUTH because neither was configured.
       - name: Publish to npm with provenance
         run: npm publish --provenance --access public
         env:
