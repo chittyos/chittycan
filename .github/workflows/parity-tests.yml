@@ -54,16 +54,25 @@ jobs:
         run: |
           node tests/parity_node.js
 
-  # No continue-on-error: this job gates. It previously carried the flag while
-  # requesting model "gpt-4" from an Ollama that only had llama3.2:1b pulled, so
-  # it 404'd on every run since it was added and the workflow still reported
-  # green — a check that cost CI minutes and delivered no signal.
+  # continue-on-error removed. Note this makes the job report red, NOT block a
+  # merge: main has no required status checks and allow_auto_merge is true, so
+  # auto-merge will merge straight through a red parity-local. Making it a real
+  # gate is a branch-protection change, not a workflow one. Previously the job
+  # requested model "gpt-4" from an Ollama that only pulled llama3.2:1b, so it
+  # 404'd on every run since it was added while the workflow still reported
+  # green — CI minutes spent for no signal at all.
   parity-local:
     name: Local Ollama Tests
     runs-on: ubuntu-latest
+    # test_streaming sends no max_tokens and Ollama samples at temperature 0.8,
+    # so generation length is unbounded; without a ceiling this job inherits the
+    # 360-minute default.
+    timeout-minutes: 20
     services:
       ollama:
-        image: ollama/ollama:latest
+        # Pinned: :latest is the one drift vector that could move the model's
+        # output distribution out from under the content assertions.
+        image: ollama/ollama:0.32.5
         ports:
           - 11434:11434
     steps:
@@ -74,6 +83,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
       - name: Pull Ollama models
         run: |
           docker exec ${{ job.services.ollama.id }} ollama pull llama3.2:1b
@@ -81,15 +95,31 @@ jobs:
           # all-minilm is the embedding model the embeddings test needs.
           docker exec ${{ job.services.ollama.id }} ollama pull all-minilm
 
+      # First generation loads 1.3GB of weights from cold disk. Measured at 96s
+      # on a warm cache, so the previous single 120s attempt had only a 1.25x
+      # margin and would fail the job outright on a slower cold runner. Retry to
+      # a ~450s budget instead, and fail loudly if the model never answers.
       - name: Warm up model
         run: |
-          curl -sf http://localhost:11434/api/generate \
-            -d '{"model":"llama3.2:1b","prompt":"hi","stream":false}' \
-            --max-time 120 > /dev/null
+          for attempt in 1 2 3; do
+            if curl -sf http://localhost:11434/api/generate \
+                 -d '{"model":"llama3.2:1b","prompt":"hi","stream":false}' \
+                 --max-time 150 > /dev/null; then
+              echo "warm-up ok on attempt $attempt"
+              exit 0
+            fi
+            echo "warm-up attempt $attempt timed out; retrying"
+          done
+          echo "FAIL: llama3.2:1b did not respond within 3 x 150s"
+          exit 1
 
       - name: Install dependencies
         run: |
-          pip install openai
+          # Unpinned once already broke this suite (see 3c70986, the openai>=1.0
+          # client migration). Cap the major now that the job no longer swallows
+          # its own failures.
+          pip install 'openai>=1.0,<3'
+          npm install --no-save 'openai@>=4 <7'
 
       - name: Run local tests
         env:
@@ -100,3 +130,14 @@ jobs:
           PARITY_EMBEDDING_MODEL: all-minilm
         run: |
           python3 tests/parity_py.py
+
+      # The Node harness takes the same env. Without this it is the only copy of
+      # the model plumbing never executed by any job — dead code in CI.
+      - name: Run local tests (Node)
+        env:
+          OPENAI_API_KEY: dummy-key
+          OPENAI_API_BASE: http://localhost:11434/v1
+          PARITY_CHAT_MODEL: llama3.2:1b
+          PARITY_EMBEDDING_MODEL: all-minilm
+        run: |
+          node tests/parity_node.js

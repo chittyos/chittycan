@@ -118,9 +118,11 @@ async function testEmbeddings() {
 async function testStreaming() {
   console.log("\n[3/4] Testing streaming...");
 
+  // Sampled call (Ollama defaults to temperature 0.8) — bound the worst case.
   const stream = await client.chat.completions.create({
     model: CHAT_MODEL,
     messages: [{ role: "user", content: "Count to 3" }],
+    max_tokens: 64,
     stream: true
   });
 
@@ -134,8 +136,11 @@ async function testStreaming() {
     assertOk(chunk.object === "chat.completion.chunk", "stream chunk wrong object type");
     assertOk(chunk.choices && chunk.choices.length > 0, "stream chunk missing choices");
 
+    // Guard the delta itself: a chunk carrying only a finish_reason has no
+    // delta, and reading .content off it throws mid-stream. parity_py.py:157
+    // already guards this way.
     const delta = chunk.choices[0].delta;
-    if (delta.content) {
+    if (delta && delta.content) {
       content += delta.content;
     }
   }

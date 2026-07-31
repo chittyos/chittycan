@@ -41,9 +41,12 @@ if not api_key:
 
 client = OpenAI(api_key=api_key, base_url=api_base)
 
-CHAT_MODEL = os.getenv("PARITY_CHAT_MODEL", "gpt-4")
-COMPLETION_MODEL = os.getenv("PARITY_COMPLETION_MODEL", "text-davinci-003")
-EMBEDDING_MODEL = os.getenv("PARITY_EMBEDDING_MODEL", "text-embedding-3-small")
+# `or` rather than a getenv default: an env var set to the empty string (a CI
+# `${{ vars.X }}` that is unset expands to "") must fall back, not send model="".
+# Node's `||` already behaves this way; this keeps the two harnesses identical.
+CHAT_MODEL = os.getenv("PARITY_CHAT_MODEL") or "gpt-4"
+COMPLETION_MODEL = os.getenv("PARITY_COMPLETION_MODEL") or "text-davinci-003"
+EMBEDDING_MODEL = os.getenv("PARITY_EMBEDDING_MODEL") or "text-embedding-3-small"
 print(f"Testing OpenAI compatibility at: {api_base}")
 print(f"  chat={CHAT_MODEL}  completion={COMPLETION_MODEL}  embedding={EMBEDDING_MODEL}")
 print("=" * 60)
@@ -134,9 +137,13 @@ def test_streaming():
     """Test streaming completions"""
     print("\n[4/5] Testing streaming...")
 
+    # Unlike the other calls this one is sampled (Ollama defaults to
+    # temperature 0.8), so its duration varies ~4x. max_tokens bounds the worst
+    # case; the assertions only need "more than zero chunks with content".
     stream = client.chat.completions.create(
         model=CHAT_MODEL,
         messages=[{"role": "user", "content": "Count to 3"}],
+        max_tokens=64,
         stream=True
     )
 
