@@ -276,9 +276,19 @@ describe("viewport status — missing shadow file", () => {
 });
 
 describe("viewport status — failure signalling", () => {
+  // Make the path a directory rather than chmod 000'ing a file. Permission bits
+  // are not a portable way to make something unreadable: root ignores them
+  // outright (so this asserted nothing under `docker run node:20 npm test`, and
+  // a `container:` job in GHA runs as root by default), and on Windows the
+  // chmod is a no-op. A directory fails the read for every uid on every
+  // platform — existsSync still passes the guard above, and readFile throws
+  // EISDIR into the same catch.
+  //
+  // Skipping under root was the first attempt and was worse than useless:
+  // mutation-tested by removing `process.exitCode = 1` from viewport.ts, the
+  // skip let the regression ship green as root while catching it as non-root.
   it("exits non-zero when the shadow file cannot be read", async () => {
-    fs.writeFileSync(shadowPath, JSON.stringify(sessionRecord()) + "\n", "utf-8");
-    fs.chmodSync(shadowPath, 0o000);
+    fs.mkdirSync(shadowPath);
     try {
       const out = await runStatus();
       expect(out).toMatch(/Failed to read shadow state/);
@@ -286,7 +296,7 @@ describe("viewport status — failure signalling", () => {
       // tell a total read failure from a clean report.
       expect(process.exitCode).toBe(1);
     } finally {
-      fs.chmodSync(shadowPath, 0o600);
+      fs.rmSync(shadowPath, { recursive: true, force: true });
       process.exitCode = 0;
     }
   });
