@@ -54,10 +54,13 @@ jobs:
         run: |
           node tests/parity_node.js
 
+  # No continue-on-error: this job gates. It previously carried the flag while
+  # requesting model "gpt-4" from an Ollama that only had llama3.2:1b pulled, so
+  # it 404'd on every run since it was added and the workflow still reported
+  # green — a check that cost CI minutes and delivered no signal.
   parity-local:
     name: Local Ollama Tests
     runs-on: ubuntu-latest
-    continue-on-error: true
     services:
       ollama:
         image: ollama/ollama:latest
@@ -71,9 +74,12 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Pull Ollama model
+      - name: Pull Ollama models
         run: |
           docker exec ${{ job.services.ollama.id }} ollama pull llama3.2:1b
+          # llama3.2:1b is a generative model and cannot serve /v1/embeddings;
+          # all-minilm is the embedding model the embeddings test needs.
+          docker exec ${{ job.services.ollama.id }} ollama pull all-minilm
 
       - name: Warm up model
         run: |
@@ -89,5 +95,8 @@ jobs:
         env:
           OPENAI_API_KEY: dummy-key
           OPENAI_API_BASE: http://localhost:11434/v1
+          PARITY_CHAT_MODEL: llama3.2:1b
+          PARITY_COMPLETION_MODEL: llama3.2:1b
+          PARITY_EMBEDDING_MODEL: all-minilm
         run: |
           python3 tests/parity_py.py

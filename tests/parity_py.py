@@ -9,6 +9,18 @@ Usage:
     export CHITTYCAN_TOKEN=chitty_xxx
     export OPENAI_API_BASE=https://connect.chitty.cc/v1
     python3 tests/parity_py.py
+
+Model names are configurable so the same suite can be pointed at any
+OpenAI-compatible endpoint (ChittyCan proxy, Ollama, a local gateway):
+
+    PARITY_CHAT_MODEL        default gpt-4
+    PARITY_COMPLETION_MODEL  default text-davinci-003
+    PARITY_EMBEDDING_MODEL   default text-embedding-3-small
+
+Assertions are identical for every target. llama3.2:1b answers the greeting
+prompt correctly at temperature 0, so no endpoint currently needs a relaxed
+content check and none is offered — a knob that weakens a gate should exist
+only once something actually requires it.
 """
 
 import os
@@ -29,7 +41,11 @@ if not api_key:
 
 client = OpenAI(api_key=api_key, base_url=api_base)
 
+CHAT_MODEL = os.getenv("PARITY_CHAT_MODEL", "gpt-4")
+COMPLETION_MODEL = os.getenv("PARITY_COMPLETION_MODEL", "text-davinci-003")
+EMBEDDING_MODEL = os.getenv("PARITY_EMBEDDING_MODEL", "text-embedding-3-small")
 print(f"Testing OpenAI compatibility at: {api_base}")
+print(f"  chat={CHAT_MODEL}  completion={COMPLETION_MODEL}  embedding={EMBEDDING_MODEL}")
 print("=" * 60)
 
 
@@ -45,7 +61,7 @@ def test_chat():
     print("\n[1/5] Testing chat completions...")
 
     r = client.chat.completions.create(
-        model="gpt-4",
+        model=CHAT_MODEL,
         messages=[{"role": "user", "content": "Say hi in 3 words"}],
         max_tokens=16,
         temperature=0
@@ -60,7 +76,10 @@ def test_chat():
     # Verify content
     content = r.choices[0].message.content
     assert_ok(content and len(content) > 0, "chat content empty")
-    assert_ok("hi" in content.lower() or "hello" in content.lower(), "chat content sanity check")
+    assert_ok(
+        "hi" in content.lower() or "hello" in content.lower(),
+        "chat content sanity check",
+    )
 
     # Verify usage tokens
     assert_ok(r.usage.total_tokens > 0, "chat usage tokens missing")
@@ -73,7 +92,7 @@ def test_completion():
     print("\n[2/5] Testing text completions...")
 
     r = client.completions.create(
-        model="text-davinci-003",
+        model=COMPLETION_MODEL,
         prompt="2+2 =",
         max_tokens=5,
         temperature=0
@@ -95,7 +114,7 @@ def test_embeddings():
     print("\n[3/5] Testing embeddings...")
 
     r = client.embeddings.create(
-        model="text-embedding-3-small",
+        model=EMBEDDING_MODEL,
         input="hello world"
     )
 
@@ -116,7 +135,7 @@ def test_streaming():
     print("\n[4/5] Testing streaming...")
 
     stream = client.chat.completions.create(
-        model="gpt-4",
+        model=CHAT_MODEL,
         messages=[{"role": "user", "content": "Count to 3"}],
         stream=True
     )

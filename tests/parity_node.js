@@ -9,6 +9,15 @@
  *   export CHITTYCAN_TOKEN=chitty_xxx
  *   export OPENAI_API_BASE=https://connect.chitty.cc/v1
  *   node tests/parity_node.js
+ *
+ * Model names are configurable so the same suite can target any
+ * OpenAI-compatible endpoint (ChittyCan proxy, Ollama, a local gateway):
+ *
+ *   PARITY_CHAT_MODEL       default gpt-4
+ *   PARITY_EMBEDDING_MODEL  default text-embedding-3-small
+ *
+ * Assertions are identical for every target; no relaxed content mode is
+ * offered because no endpoint currently needs one.
  */
 
 // package.json sets "type": "module", so this file is ESM — require() is not
@@ -31,7 +40,10 @@ const client = new OpenAI({
   baseURL: process.env.OPENAI_API_BASE || "https://connect.chitty.cc/v1"
 });
 
+const CHAT_MODEL = process.env.PARITY_CHAT_MODEL || "gpt-4";
+const EMBEDDING_MODEL = process.env.PARITY_EMBEDDING_MODEL || "text-embedding-3-small";
 console.log(`Testing OpenAI compatibility at: ${client.baseURL}`);
+console.log(`  chat=${CHAT_MODEL}  embedding=${EMBEDDING_MODEL}`);
 console.log("=".repeat(60));
 
 /**
@@ -51,7 +63,7 @@ async function testChat() {
   console.log("\n[1/4] Testing chat completions...");
 
   const response = await client.chat.completions.create({
-    model: "gpt-4",
+    model: CHAT_MODEL,
     messages: [{ role: "user", content: "Say hi in 3 words" }],
     max_tokens: 16,
     temperature: 0
@@ -84,7 +96,7 @@ async function testEmbeddings() {
   console.log("\n[2/4] Testing embeddings...");
 
   const response = await client.embeddings.create({
-    model: "text-embedding-3-small",
+    model: EMBEDDING_MODEL,
     input: "hello world"
   });
 
@@ -107,7 +119,7 @@ async function testStreaming() {
   console.log("\n[3/4] Testing streaming...");
 
   const stream = await client.chat.completions.create({
-    model: "gpt-4",
+    model: CHAT_MODEL,
     messages: [{ role: "user", content: "Count to 3" }],
     stream: true
   });
