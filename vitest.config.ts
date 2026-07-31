@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig, configDefaults } from "vitest/config";
 import path from "path";
 
 export default defineConfig({
@@ -17,12 +17,14 @@ export default defineConfig({
     // healthier than it is, which is why it survived unnoticed. `.gitignore`
     // already excludes `.claude/`, so CI never saw the duplicates and only local
     // runs were wrong.
-    exclude: [
-      "**/node_modules/**",
-      "**/dist/**",
-      "**/.claude/**",
-      "**/worktrees/**",
-    ],
+    //
+    // Spread configDefaults.exclude rather than re-listing: assigning `exclude`
+    // REPLACES the defaults, so hand-writing the array silently dropped
+    // `**/.git/**` (which matters for submodules, where .git/modules/<sub>/
+    // holds a full checkout). `**/.claude/**` alone covers both worktree
+    // locations — a bare `**/worktrees/**` would also swallow a real source dir
+    // named worktrees, and this CLI manages worktrees, so that name is likely.
+    exclude: [...configDefaults.exclude, "**/dist/**", "**/.claude/**"],
   },
   resolve: {
     alias: {
