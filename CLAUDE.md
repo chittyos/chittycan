@@ -84,7 +84,7 @@ handler)`, and some as yargs command modules (`src/commands/viewport.ts` exports
 | `can propose list/generate/preview/accept/reject` | Auto-generated skill/agent proposals |
 | `can progress [cli]` | Learning progress and skill levels |
 | `can compliance` | Foundation compliance report |
-| `can market <action> [id]` | ChittyMarket artifact lifecycle (list/add/enable/disable/info/sync/push) |
+| `can market <action> [id]` | ChittyMarket artifact lifecycle (list/add/enable/disable/info/verify/sync/push; `pull` is a deprecated alias for `sync`) |
 | `can webmaster` / `can wm` | Webmaster surface operations |
 | `can surface compile\|hotload <domain>` | Cross-surface capability mold compiler & hot-loader |
 | `can scaffold <type>` | Scaffold a new artifact |
@@ -100,6 +100,24 @@ registration pointing at the same `webmasterCommand` handler, not a yargs
 `.alias()` — edit both blocks or they drift apart. `webmaster`, `wm`, and `surface`
 each opt out of strict parsing with `.strict(false)` so they can forward unknown
 flags to their handlers.
+
+`market` is the opposite case: it *does* use `.strict()` with an explicit
+`choices` array on the `action` positional, so **an action implemented in
+`marketCommand()` is unreachable unless it is also listed in `choices`** in
+`src/index.ts`. `pull` was dead for exactly this reason. The yargs handler also
+carries its own `switch` that shadows `marketCommand()` for every listed action —
+`marketCommand()` only runs via the `default` branch, so a new action needs
+wiring in *both* switches.
+
+### Artifact integrity (`can market verify`)
+
+`verify` hashes an artifact's on-disk content (SHA-256 over each file's relative
+path *and* bytes, so renames are caught) and compares it to `contentHash` in the
+manifest. It **fails closed**: only `ok` counts as a pass, and the command exits
+non-zero otherwise. An artifact with no recorded hash reports `unrecorded`, not
+success — an unrecorded hash proves nothing about the content. `--record` adopts
+the current on-disk state as the trusted baseline; `.git`, `.DS_Store`,
+`node_modules`, and `__pycache__` are excluded so VCS churn isn't read as drift.
 
 ### MCP Server
 

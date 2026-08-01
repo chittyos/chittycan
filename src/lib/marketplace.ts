@@ -10,6 +10,7 @@
 import fs from "fs-extra";
 import path from "path";
 import os from "os";
+import crypto from "crypto";
 import { execSync } from "child_process";
 
 // ---------------------------------------------------------------------------
@@ -59,6 +60,8 @@ export interface MarketplaceArtifact {
     serverId?: string;
   };
   tags: string[];
+  /** SHA-256 over the artifact's on-disk content. Absent until `can market verify --record`. */
+  contentHash?: string;
 }
 
 export interface Marketplace {
@@ -121,6 +124,146 @@ export function artifactEnabled(artifact: MarketplaceArtifact): boolean {
 export function resolveHome(p: string): string {
   if (!p) return p;
   return p.startsWith("~/") ? path.join(os.homedir(), p.slice(2)) : p;
+}
+
+// ---------------------------------------------------------------------------
+// Content hashing / verification
+// ---------------------------------------------------------------------------
+
+/** Files we never hash — editor cruft and VCS metadata are not artifact content. */
+const HASH_IGNORE = new Set([".git", ".DS_Store", "node_modules", "__pycache__"]);
+
+/**
+ * Collect every file under `root`, relative to it, sorted for determinism.
+ * A single-file artifact (path points at a file) yields just that file.
+ */
+function collectFiles(root: string): string[] {
+  const stat = fs.statSync(root);
+  if (stat.isFile()) return [path.basename(root)];
+
+  const out: string[] = [];
+  const walk = (dir: string, prefix: string): void => {
+    for (const entry of fs.readdirSync(dir).sort()) {
+      if (HASH_IGNORE.has(entry)) continue;
+      const abs = path.join(dir, entry);
+      const rel = prefix ? `${prefix}/${entry}` : entry;
+      if (fs.statSync(abs).isDirectory()) walk(abs, rel);
+      else out.push(rel);
+    }
+  };
+  walk(root, "");
+  return out.sort();
+}
+
+/**
+ * SHA-256 over an artifact's on-disk content.
+ *
+ * The digest covers both the relative path and the bytes of every file, so a
+ * rename is as detectable as an edit. Returns null when the artifact declares
+ * no path or the path does not exist — callers must treat that as unverifiable,
+ * never as a pass.
+ */
+export function computeArtifactHash(
+  artifact: MarketplaceArtifact
+): { hash: string; fileCount: number } | null {
+  const root = resolveHome(artifact.standalone?.path ?? "");
+  if (!root || !fs.existsSync(root)) return null;
+
+  const files = collectFiles(root);
+  const isFile = fs.statSync(root).isFile();
+  const digest = crypto.createHash("sha256");
+
+  for (const rel of files) {
+    const abs = isFile ? root : path.join(root, rel);
+    digest.update(rel);
+    digest.update("\0");
+    digest.update(fs.readFileSync(abs));
+    digest.update("\0");
+  }
+
+  return { hash: digest.digest("hex"), fileCount: files.length };
+}
+
+export type VerifyStatus = "ok" | "modified" | "unrecorded" | "missing" | "unpathed";
+
+export interface VerifyResult {
+  id: string;
+  status: VerifyStatus;
+  /** Hash computed from disk, if the artifact was readable. */
+  actual?: string;
+  /** Hash recorded in the manifest, if any. */
+  expected?: string;
+  fileCount?: number;
+  detail: string;
+}
+
+/** True only for a recorded hash that matches disk. Everything else fails closed. */
+export function verifyPassed(result: VerifyResult): boolean {
+  return result.status === "ok";
+}
+
+/**
+ * Verify one artifact's on-disk content against its recorded hash.
+ *
+ * Fails closed: an artifact with no recorded hash reports `unrecorded`, not a
+ * pass, because an unrecorded hash proves nothing about the content.
+ */
+export function verifyArtifact(artifact: MarketplaceArtifact): VerifyResult {
+  const declared = artifact.standalone?.path ?? "";
+  if (!declared) {
+    return { id: artifact.id, status: "unpathed", detail: "no standalone.path declared" };
+  }
+
+  const computed = computeArtifactHash(artifact);
+  if (!computed) {
+    return {
+      id: artifact.id,
+      status: "missing",
+      detail: `path does not exist: ${resolveHome(declared)}`,
+    };
+  }
+
+  if (!artifact.contentHash) {
+    return {
+      id: artifact.id,
+      status: "unrecorded",
+      actual: computed.hash,
+      fileCount: computed.fileCount,
+      detail: "no contentHash recorded — run `can market verify <id> --record`",
+    };
+  }
+
+  if (artifact.contentHash !== computed.hash) {
+    return {
+      id: artifact.id,
+      status: "modified",
+      actual: computed.hash,
+      expected: artifact.contentHash,
+      fileCount: computed.fileCount,
+      detail: "on-disk content does not match recorded hash",
+    };
+  }
+
+  return {
+    id: artifact.id,
+    status: "ok",
+    actual: computed.hash,
+    expected: artifact.contentHash,
+    fileCount: computed.fileCount,
+    detail: `${computed.fileCount} file(s) match recorded hash`,
+  };
+}
+
+/** Record the current on-disk hash as the artifact's trusted baseline. */
+export function recordArtifactHash(
+  artifact: MarketplaceArtifact
+): { ok: true; hash: string } | { ok: false; reason: string } {
+  const computed = computeArtifactHash(artifact);
+  if (!computed) {
+    return { ok: false, reason: `cannot hash ${artifact.id}: path missing or undeclared` };
+  }
+  artifact.contentHash = computed.hash;
+  return { ok: true, hash: computed.hash };
 }
 
 // ---------------------------------------------------------------------------

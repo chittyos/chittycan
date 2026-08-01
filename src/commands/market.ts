@@ -24,6 +24,10 @@ import {
   syncWithRepo,
   pushToRepo,
   resolveHome,
+  verifyArtifact,
+  verifyPassed,
+  recordArtifactHash,
+  type VerifyResult,
   RUNTIME_MARKETPLACE,
   REPO_MARKETPLACE,
   type ArtifactType,
@@ -200,7 +204,109 @@ export async function marketInfo(id: string): Promise<void> {
   if (resolvedPath) {
     console.log(`  Path:        ${resolvedPath}`);
   }
+
+  const result = verifyArtifact(artifact);
+  console.log(`  Integrity:   ${formatVerifyStatus(result)}`);
+  if (result.expected) console.log(chalk.dim(`  Recorded:    sha256:${result.expected}`));
+  if (result.actual && result.actual !== result.expected) {
+    console.log(chalk.dim(`  On disk:     sha256:${result.actual}`));
+  }
   console.log();
+}
+
+// ---------------------------------------------------------------------------
+// verify
+// ---------------------------------------------------------------------------
+
+function formatVerifyStatus(result: VerifyResult): string {
+  switch (result.status) {
+    case "ok":
+      return chalk.green(`verified (${result.detail})`);
+    case "modified":
+      return chalk.red(`MODIFIED — ${result.detail}`);
+    case "unrecorded":
+      return chalk.yellow(`unrecorded — ${result.detail}`);
+    case "missing":
+      return chalk.red(`missing — ${result.detail}`);
+    case "unpathed":
+      return chalk.dim(`n/a — ${result.detail}`);
+  }
+}
+
+/**
+ * Verify artifact content against recorded SHA-256 hashes.
+ *
+ * Fails closed: exits non-zero unless every checked artifact reports `ok`, so
+ * an unrecorded or missing artifact is a failure, not a silent pass.
+ */
+export async function marketVerify(opts: {
+  id?: string;
+  all?: boolean;
+  record?: boolean;
+}): Promise<void> {
+  const data = loadMarketplace();
+
+  let targets;
+  if (opts.id) {
+    const artifact = findArtifact(data, opts.id);
+    if (!artifact) {
+      console.log(chalk.red(`❌ Not found: ${opts.id}`));
+      process.exitCode = 1;
+      return;
+    }
+    targets = [artifact];
+  } else if (opts.all) {
+    targets = realArtifacts(data);
+  } else {
+    console.log(chalk.red("❌ Specify an artifact id or --all"));
+    console.log(chalk.dim("   Example: can market verify skill-market"));
+    console.log(chalk.dim("            can market verify --all"));
+    process.exitCode = 1;
+    return;
+  }
+
+  if (opts.record) {
+    let recorded = 0;
+    for (const artifact of targets) {
+      const result = recordArtifactHash(artifact);
+      if (result.ok) {
+        recorded++;
+        console.log(chalk.green(`✅ Recorded ${artifact.id}`) + chalk.dim(` sha256:${result.hash.slice(0, 16)}…`));
+      } else {
+        console.log(chalk.red(`❌ ${result.reason}`));
+        process.exitCode = 1;
+      }
+    }
+    if (recorded > 0) saveMarketplace(data);
+    console.log(chalk.dim(`\n   Recorded ${recorded}/${targets.length} baseline hash(es).\n`));
+    return;
+  }
+
+  console.log(chalk.cyan(`\n🔍 Verifying ${targets.length} artifact(s)...\n`));
+
+  const results = targets.map(verifyArtifact);
+  const failures = results.filter((r) => !verifyPassed(r));
+
+  for (const result of results) {
+    // On --all, stay quiet about passes so failures are not buried.
+    if (opts.all && verifyPassed(result)) continue;
+    console.log(`  ${result.id.padEnd(38)} ${formatVerifyStatus(result)}`);
+  }
+
+  const tally = (s: string) => results.filter((r) => r.status === s).length;
+  console.log(
+    chalk.dim(
+      `\n  ${tally("ok")} verified  |  ${tally("modified")} modified  |  ` +
+        `${tally("unrecorded")} unrecorded  |  ${tally("missing")} missing  |  ${tally("unpathed")} unpathed\n`
+    )
+  );
+
+  if (failures.length > 0) {
+    console.log(chalk.red(`❌ ${failures.length} artifact(s) failed verification.`));
+    process.exitCode = 1;
+  } else {
+    console.log(chalk.green(`✅ All ${results.length} artifact(s) verified.`));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -296,6 +402,13 @@ export async function marketCommand(
       if (!opts.id) { console.log(chalk.red("❌ Specify an artifact id")); return; }
       return marketInfo(opts.id as string);
 
+    case "verify":
+      return marketVerify({
+        id: opts.id as string | undefined,
+        all: opts.all as boolean | undefined,
+        record: opts.record as boolean | undefined,
+      });
+
     case "sync":
       return marketSync();
 
@@ -309,6 +422,7 @@ export async function marketCommand(
 
     default:
       console.log(chalk.red(`❌ Unknown market action: ${action}`));
-      console.log(chalk.dim("   Actions: list, add, enable, disable, info, sync, push"));
+      console.log(chalk.dim("   Actions: list, add, enable, disable, info, verify, sync, push"));
+      process.exitCode = 1;
   }
 }
