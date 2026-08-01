@@ -345,7 +345,9 @@ yargs(args)
         .option("message", { type: "string", alias: "m", describe: "Git commit message for push" })
         // verify options
         .option("all", { type: "boolean", describe: "Verify every registered artifact" })
-        .option("record", { type: "boolean", describe: "Record current on-disk hash as the trusted baseline" });
+        .option("record", { type: "boolean", describe: "Record current on-disk hash as the trusted baseline" })
+        .option("force", { type: "boolean", describe: "Override an integrity failure (enable / verify --record)" })
+        .option("allow-empty", { type: "boolean", describe: "Treat an empty manifest as success instead of failure" });
     },
     async (argv) => {
       const action = argv.action as string;
@@ -373,7 +375,9 @@ yargs(args)
           });
           break;
         case "enable":
-          await marketEnable((argv.id ?? positionalId) as string);
+          await marketEnable((argv.id ?? positionalId) as string, {
+            force: argv.force as boolean | undefined,
+          });
           break;
         case "disable":
           await marketDisable((argv.id ?? positionalId) as string);
@@ -386,6 +390,8 @@ yargs(args)
             id: (argv.id ?? positionalId) as string | undefined,
             all: argv.all as boolean | undefined,
             record: argv.record as boolean | undefined,
+            force: argv.force as boolean | undefined,
+            allowEmpty: argv["allow-empty"] as boolean | undefined,
           });
           break;
         case "sync":

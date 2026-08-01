@@ -130,58 +130,111 @@ export function resolveHome(p: string): string {
 // Content hashing / verification
 // ---------------------------------------------------------------------------
 
-/** Files we never hash — editor cruft and VCS metadata are not artifact content. */
-const HASH_IGNORE = new Set([".git", ".DS_Store", "node_modules", "__pycache__"]);
+/**
+ * Names skipped when hashing.
+ *
+ * Deliberately narrow: only VCS and OS metadata, which are not artifact content
+ * and churn independently of it. `node_modules` and `__pycache__` are NOT
+ * skipped — they hold executable code, and excluding them would let a payload
+ * dropped inside an artifact still report as verified.
+ */
+const HASH_IGNORE = new Set([".git", ".DS_Store"]);
+
+/** One entry in the hashed manifest: a file's bytes, or a symlink's target. */
+interface HashEntry {
+  rel: string;
+  kind: "file" | "symlink";
+  abs: string;
+}
 
 /**
- * Collect every file under `root`, relative to it, sorted for determinism.
- * A single-file artifact (path points at a file) yields just that file.
+ * Collect every entry under `root`, relative to it, sorted for determinism.
+ *
+ * Symlinks are recorded by their target string and never followed, so a symlink
+ * loop cannot hang the walk and a dangling symlink is data rather than a crash.
  */
-function collectFiles(root: string): string[] {
-  const stat = fs.statSync(root);
-  if (stat.isFile()) return [path.basename(root)];
+function collectEntries(root: string): HashEntry[] {
+  const rootStat = fs.lstatSync(root);
+  if (!rootStat.isDirectory()) {
+    return [
+      {
+        rel: path.basename(root),
+        kind: rootStat.isSymbolicLink() ? "symlink" : "file",
+        abs: root,
+      },
+    ];
+  }
 
-  const out: string[] = [];
+  const out: HashEntry[] = [];
   const walk = (dir: string, prefix: string): void => {
     for (const entry of fs.readdirSync(dir).sort()) {
       if (HASH_IGNORE.has(entry)) continue;
       const abs = path.join(dir, entry);
       const rel = prefix ? `${prefix}/${entry}` : entry;
-      if (fs.statSync(abs).isDirectory()) walk(abs, rel);
-      else out.push(rel);
+
+      // lstat, never stat — following links here is what enables ELOOP.
+      const st = fs.lstatSync(abs);
+      if (st.isSymbolicLink()) out.push({ rel, kind: "symlink", abs });
+      else if (st.isDirectory()) walk(abs, rel);
+      else if (st.isFile()) out.push({ rel, kind: "file", abs });
+      // Sockets/FIFOs/devices are skipped: reading a FIFO would block forever.
     }
   };
   walk(root, "");
-  return out.sort();
+  return out.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
+}
+
+/** Length-prefixed field, so no content can forge a field boundary. */
+function updateFramed(digest: crypto.Hash, buf: Buffer): void {
+  const len = Buffer.alloc(8);
+  len.writeBigUInt64BE(BigInt(buf.length));
+  digest.update(len);
+  digest.update(buf);
 }
 
 /**
  * SHA-256 over an artifact's on-disk content.
  *
- * The digest covers both the relative path and the bytes of every file, so a
- * rename is as detectable as an edit. Returns null when the artifact declares
- * no path or the path does not exist — callers must treat that as unverifiable,
- * never as a pass.
+ * Every field — the artifact's shape, and each entry's kind, relative path, and
+ * bytes — is length-prefixed. Unframed concatenation is forgeable: under a
+ * NUL-delimited scheme `{a:"X", b:"Y"}` collides with `{a:"X\0b\0Y"}`. Framing
+ * also binds shape, so a single-file artifact cannot collide with a directory
+ * holding one identically-named file.
+ *
+ * Returns null when the artifact declares no path or the path does not exist —
+ * callers must treat that as unverifiable, never as a pass.
  */
 export function computeArtifactHash(
   artifact: MarketplaceArtifact
 ): { hash: string; fileCount: number } | null {
   const root = resolveHome(artifact.standalone?.path ?? "");
-  if (!root || !fs.existsSync(root)) return null;
+  if (!root) return null;
 
-  const files = collectFiles(root);
-  const isFile = fs.statSync(root).isFile();
-  const digest = crypto.createHash("sha256");
-
-  for (const rel of files) {
-    const abs = isFile ? root : path.join(root, rel);
-    digest.update(rel);
-    digest.update("\0");
-    digest.update(fs.readFileSync(abs));
-    digest.update("\0");
+  let rootStat: fs.Stats;
+  try {
+    rootStat = fs.lstatSync(root);
+  } catch {
+    return null;
   }
 
-  return { hash: digest.digest("hex"), fileCount: files.length };
+  const entries = collectEntries(root);
+  const digest = crypto.createHash("sha256");
+
+  // Bind shape and cardinality so file-vs-directory is part of the identity.
+  updateFramed(digest, Buffer.from(rootStat.isDirectory() ? "dir" : "file", "utf8"));
+  updateFramed(digest, Buffer.from(String(entries.length), "utf8"));
+
+  for (const entry of entries) {
+    updateFramed(digest, Buffer.from(entry.rel, "utf8"));
+    updateFramed(digest, Buffer.from(entry.kind, "utf8"));
+    const payload =
+      entry.kind === "symlink"
+        ? Buffer.from(fs.readlinkSync(entry.abs), "utf8")
+        : fs.readFileSync(entry.abs);
+    updateFramed(digest, payload);
+  }
+
+  return { hash: digest.digest("hex"), fileCount: entries.length };
 }
 
 export type VerifyStatus = "ok" | "modified" | "unrecorded" | "missing" | "unpathed";

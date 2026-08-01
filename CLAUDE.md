@@ -111,13 +111,40 @@ wiring in *both* switches.
 
 ### Artifact integrity (`can market verify`)
 
-`verify` hashes an artifact's on-disk content (SHA-256 over each file's relative
-path *and* bytes, so renames are caught) and compares it to `contentHash` in the
-manifest. It **fails closed**: only `ok` counts as a pass, and the command exits
-non-zero otherwise. An artifact with no recorded hash reports `unrecorded`, not
-success — an unrecorded hash proves nothing about the content. `--record` adopts
-the current on-disk state as the trusted baseline; `.git`, `.DS_Store`,
-`node_modules`, and `__pycache__` are excluded so VCS churn isn't read as drift.
+`verify` hashes an artifact's on-disk content and compares it to `contentHash`
+in the manifest. Every field (shape, entry kind, relative path, bytes) is
+**length-prefixed** before hashing — a NUL-delimited scheme is forgeable, since
+`{a:"X", b:"Y"}` would collide with `{a:"X\0b\0Y"}`.
+
+**What it detects, and what it does not.** `contentHash` lives in
+`marketplace.json`, which sits in the same trust domain as the artifact
+directories it describes. Anyone who can write a skill directory can usually
+also write the manifest. So this detects *accidental drift and unreviewed
+change* — it is **not** a defense against a motivated attacker, and would need a
+signature over an external anchor to become one. `syncWithRepo` imports
+`contentHash` verbatim from the repo manifest for unknown ids; those baselines
+are inherited, not independently established.
+
+Rules that keep it honest, each of which had to be added after review found the
+opposite behavior shipping:
+
+- **Only `ok` passes.** `unrecorded` is a failure, not a pass — an unrecorded
+  hash proves nothing. Non-zero exit on any non-ok result.
+- **An empty check set fails.** `verify --all` against a missing or truncated
+  manifest refuses to report success; without this, deleting `marketplace.json`
+  turns any CI gate built on it into a vacuous green light. `--allow-empty`
+  opts out.
+- **`enable` gates on integrity.** Enabling is what turns on-disk content into
+  *loaded* content, so it refuses a `modified` artifact unless `--force`.
+  Verification that no operation consults is decoration.
+- **`--record` will not launder.** Re-recording an artifact that currently fails
+  verification requires `--force`, and prints both hashes first.
+
+Only `.git` and `.DS_Store` are excluded from hashing. `node_modules` and
+`__pycache__` are deliberately **included** — they hold executable code, and
+skipping them would let a payload dropped inside an artifact still report as
+verified. Symlinks are hashed by target string and never followed, so a symlink
+loop cannot hang the walk.
 
 ### MCP Server
 

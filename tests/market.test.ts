@@ -168,12 +168,129 @@ describe("verifyArtifact — fails closed", () => {
     expect(verifyPassed(result)).toBe(false);
   });
 
-  it("treats only 'ok' as a pass across every status", () => {
-    const statuses = ["modified", "unrecorded", "missing", "unpathed"] as const;
-    for (const status of statuses) {
-      expect(verifyPassed({ id: "x", status, detail: "" })).toBe(false);
+  it("does not pass any artifact reachable through a real fs state except a clean one", () => {
+    // Drive each status through real on-disk state rather than hand-built
+    // result literals, so this fails if verifyArtifact stops classifying.
+    const unrecorded = makeArtifact("skill-s1", { "SKILL.md": "x\n" });
+
+    const modified = makeArtifact("skill-s2", { "SKILL.md": "v1\n" });
+    recordArtifactHash(modified);
+    fs.writeFileSync(path.join(modified.standalone.path!, "SKILL.md"), "v2\n", "utf8");
+
+    const missing = makeArtifact("skill-s3", { "SKILL.md": "x\n" });
+    recordArtifactHash(missing);
+    fs.removeSync(missing.standalone.path!);
+
+    const unpathed = makeArtifact("skill-s4", { "SKILL.md": "x\n" });
+    unpathed.standalone.path = "";
+
+    const clean = makeArtifact("skill-s5", { "SKILL.md": "x\n" });
+    recordArtifactHash(clean);
+
+    for (const a of [unrecorded, modified, missing, unpathed]) {
+      expect(verifyPassed(verifyArtifact(a))).toBe(false);
     }
-    expect(verifyPassed({ id: "x", status: "ok", detail: "" })).toBe(true);
+    expect(verifyPassed(verifyArtifact(clean))).toBe(true);
+  });
+});
+
+describe("hash framing — forged field boundaries", () => {
+  it("does not collide a two-file tree with a one-file tree embedding NULs", () => {
+    // Under an unframed `path \0 bytes \0` scheme these are identical.
+    const two = makeArtifact("skill-two", { a: "X", b: "Y" });
+    const one = makeArtifact("skill-one", { a: "X\0b\0Y" });
+    expect(computeArtifactHash(two)!.hash).not.toBe(computeArtifactHash(one)!.hash);
+  });
+
+  it("does not collide a single-file artifact with a directory holding that file", () => {
+    const dirArtifact = makeArtifact("skill-dir", { "SKILL.md": "same\n" });
+
+    const fileArtifact = makeArtifact("skill-file", { "SKILL.md": "same\n" });
+    fileArtifact.standalone.path = path.join(fileArtifact.standalone.path!, "SKILL.md");
+
+    expect(computeArtifactHash(dirArtifact)!.hash).not.toBe(
+      computeArtifactHash(fileArtifact)!.hash
+    );
+  });
+
+  it("hashes a single-file artifact and detects edits to it", () => {
+    const a = makeArtifact("skill-single", { "SKILL.md": "v1\n" });
+    const filePath = path.join(a.standalone.path!, "SKILL.md");
+    a.standalone.path = filePath;
+
+    recordArtifactHash(a);
+    expect(verifyArtifact(a).status).toBe("ok");
+    expect(computeArtifactHash(a)!.fileCount).toBe(1);
+
+    fs.writeFileSync(filePath, "v2\n", "utf8");
+    expect(verifyArtifact(a).status).toBe("modified");
+  });
+});
+
+describe("hash scope — executable content is not excluded", () => {
+  it("detects a payload dropped into node_modules", () => {
+    const a = makeArtifact("skill-nm", { "SKILL.md": "trusted\n" });
+    recordArtifactHash(a);
+
+    const nm = path.join(a.standalone.path!, "node_modules");
+    fs.ensureDirSync(nm);
+    fs.writeFileSync(path.join(nm, "evil.js"), "process.exit(0)\n", "utf8");
+
+    expect(verifyArtifact(a).status).toBe("modified");
+  });
+
+  it("detects a payload dropped into a nested __pycache__", () => {
+    const a = makeArtifact("skill-pyc", { "SKILL.md": "trusted\n", "lib/mod.py": "x\n" });
+    recordArtifactHash(a);
+
+    const pyc = path.join(a.standalone.path!, "lib", "__pycache__");
+    fs.ensureDirSync(pyc);
+    fs.writeFileSync(path.join(pyc, "mod.pyc"), "payload", "utf8");
+
+    expect(verifyArtifact(a).status).toBe("modified");
+  });
+
+  it("still ignores .git at any depth so VCS churn is not drift", () => {
+    const a = makeArtifact("skill-nestedgit", { "SKILL.md": "x\n", "vendor/dep.md": "y\n" });
+    recordArtifactHash(a);
+
+    const nestedGit = path.join(a.standalone.path!, "vendor", ".git");
+    fs.ensureDirSync(nestedGit);
+    fs.writeFileSync(path.join(nestedGit, "HEAD"), "ref: refs/heads/main\n", "utf8");
+
+    expect(verifyArtifact(a).status).toBe("ok");
+  });
+});
+
+describe("symlinks", () => {
+  it("does not hang or throw on a symlink loop", () => {
+    const a = makeArtifact("skill-loop", { "SKILL.md": "x\n" });
+    fs.symlinkSync(a.standalone.path!, path.join(a.standalone.path!, "loop"));
+
+    // Would raise ELOOP if the walk followed links.
+    expect(() => computeArtifactHash(a)).not.toThrow();
+    expect(computeArtifactHash(a)).not.toBeNull();
+  });
+
+  it("treats a dangling symlink as data, not an error", () => {
+    const a = makeArtifact("skill-dangling", { "SKILL.md": "x\n" });
+    fs.symlinkSync("/nonexistent/target", path.join(a.standalone.path!, "broken"));
+
+    expect(() => computeArtifactHash(a)).not.toThrow();
+    recordArtifactHash(a);
+    expect(verifyArtifact(a).status).toBe("ok");
+  });
+
+  it("detects a symlink retargeted to a different path", () => {
+    const a = makeArtifact("skill-retarget", { "SKILL.md": "x\n" });
+    const link = path.join(a.standalone.path!, "link");
+    fs.symlinkSync("/target/one", link);
+    recordArtifactHash(a);
+
+    fs.unlinkSync(link);
+    fs.symlinkSync("/target/two", link);
+
+    expect(verifyArtifact(a).status).toBe("modified");
   });
 });
 

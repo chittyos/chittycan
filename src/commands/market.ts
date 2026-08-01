@@ -138,10 +138,29 @@ export async function marketAdd(opts: {
 // enable / disable
 // ---------------------------------------------------------------------------
 
-export async function marketEnable(id: string): Promise<void> {
+export async function marketEnable(id: string, opts: { force?: boolean } = {}): Promise<void> {
   const data = loadMarketplace();
   const artifact = data.artifacts.find((a): a is MarketplaceArtifact => "id" in a && (a as MarketplaceArtifact).id === id) as MarketplaceArtifact | undefined;
   const typeHint = artifact ? ` [${artifact.type}]` : "";
+
+  // Enabling is the operation that turns on-disk content into loaded content,
+  // so it is the one that must gate on integrity. A recorded hash that no
+  // longer matches means the content changed since it was trusted — refuse.
+  if (artifact) {
+    const integrity = verifyArtifact(artifact);
+    if (integrity.status === "modified" && !opts.force) {
+      console.log(chalk.red(`❌ Refusing to enable ${id}: content does not match its recorded hash.`));
+      console.log(chalk.dim(`   recorded: sha256:${integrity.expected}`));
+      console.log(chalk.dim(`   on disk:  sha256:${integrity.actual}`));
+      console.log(chalk.dim(`\n   Review the change, then re-record with ${chalk.white(`can market verify ${id} --record`)},`));
+      console.log(chalk.dim(`   or enable anyway with ${chalk.white("--force")}.\n`));
+      process.exitCode = 1;
+      return;
+    }
+    if (integrity.status === "modified" && opts.force) {
+      console.log(chalk.yellow(`⚠️  ${id} fails verification — enabling anyway because --force was given.`));
+    }
+  }
 
   const result = setEnabled(data, id, true);
   if (!result.ok) {
@@ -243,6 +262,8 @@ export async function marketVerify(opts: {
   id?: string;
   all?: boolean;
   record?: boolean;
+  force?: boolean;
+  allowEmpty?: boolean;
 }): Promise<void> {
   const data = loadMarketplace();
 
@@ -265,7 +286,35 @@ export async function marketVerify(opts: {
     return;
   }
 
+  // An empty check set is not a pass. Without this, deleting or truncating
+  // marketplace.json turns `verify --all` into a vacuous green light.
+  if (targets.length === 0) {
+    console.log(chalk.red("❌ No artifacts to verify — refusing to report success on an empty set."));
+    console.log(chalk.dim(`   Manifest: ${RUNTIME_MARKETPLACE}`));
+    console.log(chalk.dim("   Pass --allow-empty if an empty manifest is genuinely expected."));
+    if (!opts.allowEmpty) process.exitCode = 1;
+    return;
+  }
+
   if (opts.record) {
+    // Re-recording an artifact that currently fails verification would silently
+    // adopt tampered content as trusted. Require --force to say so out loud.
+    const laundering = targets
+      .map(verifyArtifact)
+      .filter((r) => r.status === "modified");
+
+    if (laundering.length > 0 && !opts.force) {
+      console.log(chalk.red(`❌ Refusing to re-record ${laundering.length} artifact(s) that currently fail verification:\n`));
+      for (const r of laundering) {
+        console.log(`  ${r.id.padEnd(38)} ${chalk.red("MODIFIED")}`);
+        console.log(chalk.dim(`    recorded: sha256:${r.expected}`));
+        console.log(chalk.dim(`    on disk:  sha256:${r.actual}`));
+      }
+      console.log(chalk.dim("\n   Inspect the diff first. Re-record anyway with --force.\n"));
+      process.exitCode = 1;
+      return;
+    }
+
     let recorded = 0;
     for (const artifact of targets) {
       const result = recordArtifactHash(artifact);
@@ -392,7 +441,7 @@ export async function marketCommand(
 
     case "enable":
       if (!opts.id) { console.log(chalk.red("❌ Specify an artifact id")); return; }
-      return marketEnable(opts.id as string);
+      return marketEnable(opts.id as string, { force: opts.force as boolean | undefined });
 
     case "disable":
       if (!opts.id) { console.log(chalk.red("❌ Specify an artifact id")); return; }
@@ -407,6 +456,8 @@ export async function marketCommand(
         id: opts.id as string | undefined,
         all: opts.all as boolean | undefined,
         record: opts.record as boolean | undefined,
+        force: opts.force as boolean | undefined,
+        allowEmpty: opts["allow-empty"] as boolean | undefined,
       });
 
     case "sync":
