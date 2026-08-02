@@ -123,9 +123,17 @@ export async function unignoredOutputDir(facts: GitFacts): Promise<Finding[]> {
   // (a) declared
   const declared = await declaredCandidates(facts);
   const declaredDirs = [...declared.keys()];
-  const declaredIgnored = await facts.checkIgnored(declaredDirs);
+  // Ask about `dir/`, not `dir`. `git check-ignore` decides "is a directory"
+  // from the path string plus the worktree: a `dist/` pattern matches
+  // directories only, so a bare `dist` that does not exist on disk exits 1
+  // ("not ignored") and yields a false positive. Proven: in a repo whose
+  // .gitignore is `dist/`, `git check-ignore dist` exits 1 while
+  // `git check-ignore dist/` exits 0 and prints `.gitignore:2:dist/`.
+  // This is the same trailing-slash semantics that lets `node_modules/` fail
+  // to match a mode-120000 symlink.
+  const declaredIgnored = await facts.checkIgnored(declaredDirs.map((d) => `${d}/`));
   for (const dir of declaredDirs) {
-    if (declaredIgnored.has(dir)) continue;
+    if (declaredIgnored.has(`${dir}/`) || declaredIgnored.has(dir)) continue;
     findings.push({
       id: `unignored-output-dir:declared:${dir}`,
       severity: "medium",
@@ -153,9 +161,9 @@ export async function unignoredOutputDir(facts: GitFacts): Promise<Finding[]> {
     seen.add(top);
   }
   const worktreeDirs = [...seen].filter((d) => !declared.has(d));
-  const worktreeIgnored = await facts.checkIgnored(worktreeDirs);
+  const worktreeIgnored = await facts.checkIgnored(worktreeDirs.map((d) => `${d}/`));
   for (const dir of worktreeDirs) {
-    if (worktreeIgnored.has(dir)) continue;
+    if (worktreeIgnored.has(`${dir}/`) || worktreeIgnored.has(dir)) continue;
     const examples = facts.untracked
       .filter((p) => p.startsWith(`${dir}/`))
       .slice(0, 5);
