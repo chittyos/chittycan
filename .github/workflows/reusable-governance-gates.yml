@@ -94,3 +94,34 @@ jobs:
       - name: Skip Dependency Audit (no package-lock.json)
         if: ${{ steps.lockfile.outputs.present != 'true' }}
         run: echo "No package-lock.json found; skipping dependency audit."
+
+  repo-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Build
+        run: npm run build
+      # Hard gate. `can hygiene` exits 1 when a finding at/above the threshold
+      # exists, 0 when clean, 2 when the detector itself failed to run — so a
+      # broken detector fails the job rather than passing it silently.
+      - name: Repo Hygiene (High+)
+        run: node dist/index.js hygiene . --min-severity high
+      # Findings detail, only when the gate fired. There is deliberately no
+      # baseline/allowlist/suppression file: a findings-suppression list is the
+      # "gate that provides no signal" this detector exists to catch.
+      - name: Repo Hygiene Findings
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo '### Repo hygiene findings (high+)'
+            echo '```json'
+            node dist/index.js hygiene . --json || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
