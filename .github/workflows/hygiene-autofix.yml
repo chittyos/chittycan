@@ -1,0 +1,180 @@
+name: Hygiene autofix
+
+# Manual dispatch ONLY. This workflow writes to the repository, so it must never
+# be reachable from an event an outside contributor can cause. It never pushes to
+# the ref that triggered it, never to the default branch, and never with --force:
+# it opens a PR from the stable branch `chore/hygiene-autofix` and no-ops if that
+# branch (or an open PR for it) already exists.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hygiene-autofix
+  cancel-in-progress: false
+
+env:
+  FIX_BRANCH: chore/hygiene-autofix
+  DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+jobs:
+  autofix:
+    name: Apply auto-fixable repo hygiene and open a PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: No-op guard - existing fix branch or open PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin "$FIX_BRANCH" >/dev/null 2>&1; then
+            echo "Branch $FIX_BRANCH already exists on origin; nothing to do."
+            exit 0
+          fi
+          open_prs="$(gh pr list --head "$FIX_BRANCH" --state open --json number --jq 'length')"
+          if [ "$open_prs" != "0" ]; then
+            echo "An open PR already has $FIX_BRANCH as its head; nothing to do."
+            exit 0
+          fi
+          echo "GUARD_CLEAR=1" >> "$GITHUB_ENV"
+
+      - name: Apply auto-fixable findings
+        if: env.GUARD_CLEAR == '1'
+        run: |
+          # Deliberately no `-e` here: the fixer's non-zero exit (1 = findings at or
+          # above the threshold) must reach `status` instead of ending the step.
+          set -uo pipefail
+          status=0
+          node dist/index.js hygiene . --fix --min-severity low --json > "$RUNNER_TEMP/hygiene-fix.json" || status=$?
+          echo "hygiene exit status: $status"
+          if [ "$status" -eq 2 ]; then
+            echo "The hygiene detector failed (exit 2). Refusing to continue." >&2
+            cat "$RUNNER_TEMP/hygiene-fix.json" >&2 || true
+            exit 1
+          fi
+
+      - name: Stop if nothing was written
+        if: env.GUARD_CLEAR == '1'
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain --untracked-files=all)" ]; then
+            echo "no fixable findings"
+            exit 0
+          fi
+          echo "WROTE=1" >> "$GITHUB_ENV"
+
+      - name: Assert the diff is a subset of the declared write-set
+        if: env.WROTE == '1'
+        run: |
+          set -euo pipefail
+          bad=0
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            path="${line:3}"
+            case "$path" in
+              .githooks/commit-msg|package.json) ;;
+              *)
+                echo "Unexpected path outside the declared write-set: $path" >&2
+                bad=1
+                ;;
+            esac
+          done <<< "$(git status --porcelain --untracked-files=all)"
+          if [ "$bad" -ne 0 ]; then
+            echo "Reverting and failing: the fixer wrote outside its declared write-set." >&2
+            git checkout -- . || true
+            git clean -fd .githooks/ || true
+            exit 1
+          fi
+          git status --porcelain --untracked-files=all
+
+      - name: Verify - install
+        if: env.WROTE == '1'
+        run: npm ci
+
+      - name: Verify - build
+        if: env.WROTE == '1'
+        run: npm run build
+
+      - name: Verify - tests
+        if: env.WROTE == '1'
+        run: npm test
+
+      - name: Commit and push the fix branch
+        if: env.WROTE == '1'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$FIX_BRANCH"
+          git add .githooks/commit-msg package.json
+          git commit -m "chore(hygiene): apply auto-fixable repo-hygiene remediation"
+          git push origin "$FIX_BRANCH"
+
+      - name: Open the pull request
+        if: env.WROTE == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          {
+            echo "Applied by \`can hygiene --fix\` in a GitHub Actions run. No human edited these bytes."
+            echo
+            echo "Rules fixed:"
+            echo
+            echo "- \`no-commit-msg-lint\`"
+            echo "- \`no-local-hook-layer\`"
+            echo
+            echo "Both are cleared by one artifact: \`.githooks/commit-msg\` (mode 100755) plus the"
+            echo "\`prepare\` wiring in \`package.json\`. No devDependency is added."
+            echo
+            echo "Reversal:"
+            echo
+            echo '```'
+            echo 'git checkout -- package.json && git clean -fd .githooks/ && git config --unset core.hooksPath'
+            echo '```'
+            echo
+            echo "After merge:"
+            echo
+            echo '```'
+            echo 'git revert --no-edit <fix-sha> && git config --unset core.hooksPath'
+            echo '```'
+            echo
+            echo "Verification run after the writes: \`npm ci\`, \`npm run build\`, \`npm test\` all passed."
+            echo
+            echo "<details><summary>hygiene-fix.json</summary>"
+            echo
+            echo '```json'
+            cat "$RUNNER_TEMP/hygiene-fix.json"
+            echo '```'
+            echo
+            echo "</details>"
+          } > "$RUNNER_TEMP/pr-body.md"
+          gh pr create \
+            --base "$DEFAULT_BRANCH" \
+            --head "$FIX_BRANCH" \
+            --title "chore(hygiene): apply auto-fixable repo-hygiene remediation" \
+            --body-file "$RUNNER_TEMP/pr-body.md"
