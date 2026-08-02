@@ -583,15 +583,32 @@ describe("interchange contract", () => {
 
     expect(Array.isArray(findings)).toBe(true);
 
-    // Without this, every per-finding assertion below is vacuous: a scanRepo()
-    // that returned [] would satisfy the whole loop. This checkout really does
-    // carry a committed npm tarball at the repository root, so the shape checks
-    // run against at least one real finding.
-    expect(findings.map((f) => f.id)).toContain(
-      "tracked-build-artifact:chittycan-0.5.1.tgz",
+    // Non-vacuity guard. Without it, every per-finding assertion below is
+    // satisfied by a scanRepo() that returned [] — the same empty-array
+    // vacuity this suite exists to catch.
+    //
+    // It must NOT come from a defect in this checkout. The previous version
+    // asserted `tracked-build-artifact:chittycan-0.5.1.tgz`, pinning the
+    // contract to a tarball that was committed at the time. #141 removed it
+    // and this test failed in CI — the suite required the repository to stay
+    // dirty in order to pass. A hygiene detector whose tests break when the
+    // repo gets clean is testing the wrong thing.
+    //
+    // The guarantee now comes from a fixture built to contain a known finding,
+    // and the shape contract is asserted over both sets. The self-scan may
+    // legitimately return [] on a clean checkout.
+    const guaranteed = createRepo({
+      committed: {
+        "package.json": PACKAGE_JSON,
+        "release-9.9.9.tgz": "a genuinely committed build artifact",
+      },
+    });
+    const fixtureFindings = await scanRepo(guaranteed);
+    expect(fixtureFindings.map((f) => f.id)).toContain(
+      "tracked-build-artifact:release-9.9.9.tgz",
     );
 
-    for (const f of findings) {
+    for (const f of [...findings, ...fixtureFindings]) {
       expect(typeof f.id).toBe("string");
       expect(f.id.length).toBeGreaterThan(0);
       expect(typeof f.title).toBe("string");
