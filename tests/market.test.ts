@@ -320,6 +320,43 @@ describe("symlinks", () => {
     expect(computeArtifactHash(real)!.hash).not.toBe(computeArtifactHash(viaLink)!.hash);
   });
 
+  it("reads through a symlink root pointing at a FILE and detects tampering", () => {
+    // The root must be followed to its bytes. Hashing the link target string
+    // instead yields a digest that never changes when the file is rewritten —
+    // the exact shape of every agent-chittyagent-* artifact.
+    const store = path.join(tmpRoot, "store");
+    fs.ensureDirSync(store);
+    const target = path.join(store, "agent.md");
+    fs.writeFileSync(target, "trusted agent\n", "utf8");
+
+    const linkPath = path.join(tmpRoot, "agentlink");
+    fs.symlinkSync(target, linkPath);
+
+    const a = makeArtifact("agent-linked", { "placeholder.md": "x\n" });
+    a.standalone.path = linkPath;
+
+    recordArtifactHash(a);
+    expect(verifyArtifact(a).status).toBe("ok");
+
+    fs.writeFileSync(target, "PWNED AGENT\n", "utf8");
+    expect(verifyArtifact(a).status).toBe("modified");
+  });
+
+  it("distinguishes a real file from a symlink to identical bytes", () => {
+    const realFile = path.join(tmpRoot, "real.md");
+    fs.writeFileSync(realFile, "same\n", "utf8");
+    const linkFile = path.join(tmpRoot, "real.md.link");
+    fs.symlinkSync(realFile, linkFile);
+
+    const direct = makeArtifact("agent-direct", { "x.md": "x\n" });
+    direct.standalone.path = realFile;
+    const viaLink = makeArtifact("agent-vialink", { "x.md": "x\n" });
+    viaLink.standalone.path = linkFile;
+
+    // Same bytes, same basename would collide without the rootIsLink binding.
+    expect(computeArtifactHash(direct)!.hash).not.toBe(computeArtifactHash(viaLink)!.hash);
+  });
+
   it("reports a dangling symlink root as missing, not as a one-entry pass", () => {
     const a = makeArtifact("skill-danglingroot", { "SKILL.md": "x\n" });
     const linkPath = path.join(tmpRoot, "dangling-root");
@@ -392,6 +429,19 @@ interface Harness {
 async function harness(): Promise<Harness> {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "chittymarket-cmd-"));
   const prevHome = process.env.HOME;
+
+  const out: string[] = [];
+  let spy: ReturnType<typeof vi.spyOn> | undefined;
+
+  // Registered BEFORE the dynamic imports: if resetModules or an import throws,
+  // HOME is already mutated and would otherwise leak for the rest of the file.
+  cleanups.push(() => {
+    spy?.mockRestore();
+    process.env.HOME = prevHome;
+    process.exitCode = undefined;
+    fs.removeSync(home);
+  });
+
   process.env.HOME = home;
   process.exitCode = undefined;
 
@@ -399,16 +449,8 @@ async function harness(): Promise<Harness> {
   const lib = await import("../src/lib/marketplace");
   const cmd = await import("../src/commands/market");
 
-  const out: string[] = [];
-  const spy = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+  spy = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
     out.push(args.map(String).join(" "));
-  });
-
-  cleanups.push(() => {
-    spy.mockRestore();
-    process.env.HOME = prevHome;
-    process.exitCode = undefined;
-    fs.removeSync(home);
   });
 
   const manifestPath = path.join(home, ".config", "chitty", "marketplace.json");

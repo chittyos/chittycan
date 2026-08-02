@@ -149,14 +149,25 @@ Only `.git` and `.DS_Store` are excluded from hashing. `node_modules` and
 skipping them would let a payload dropped inside an artifact still report as
 verified. (Measured cost: 20k files / 40MB hash in ~640ms.)
 
-**Symlinks split two ways, and the distinction is load-bearing.** Inside the
-walk, links are hashed by target string and never followed — that is what stops
-a symlink loop from hanging it. But the artifact *root* is resolved with
-`statSync` (follow), not `lstatSync`, because `lstat` reports a
-symlink-to-directory as a non-directory: treating the root as a leaf on that
-basis hashes only the link target and never reads the tree. 23 of the pathed
-artifacts in a real manifest are symlink roots, so getting this backwards
-silently reports them all as verified while inspecting nothing.
+**Symlinks split two ways, and the distinction is load-bearing.** Root and
+interior need *opposite* policies:
+
+- **Interior** (inside the walk): links are hashed by target string and never
+  followed. That is what bounds the traversal and stops a symlink loop from
+  hanging it.
+- **Root** (`standalone.path` itself): always read *through*. Resolved with
+  `statSync` (follow) to decide tree-vs-leaf, and in the leaf case hashed as
+  the file's **bytes**, not the link target. Root link-ness is bound into the
+  digest separately, so swapping a real file for a link to identical bytes is
+  still caught.
+
+Getting either half backwards silently reports artifacts as verified while
+inspecting nothing, and this is not hypothetical — in a real manifest, 15 pathed
+artifacts are symlink→directory roots and 8 are symlink→file roots (every
+`agent-chittyagent-*`). Both halves shipped broken at different points and were
+caught only by adversarial review, so **any change here needs a test with a
+symlink root of each target type**; a naive implementation passes everything
+else.
 
 ### MCP Server
 

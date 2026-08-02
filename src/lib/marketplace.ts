@@ -159,13 +159,14 @@ function collectEntries(root: string): HashEntry[] {
   // one entry containing only the link target and never read the tree at all.
   // Links are still never followed *inside* the walk — that is where ELOOP lives.
   if (!fs.statSync(root).isDirectory()) {
-    return [
-      {
-        rel: path.basename(root),
-        kind: fs.lstatSync(root).isSymbolicLink() ? "symlink" : "file",
-        abs: root,
-      },
-    ];
+    // The ROOT is always read through, even when it is a symlink: an artifact
+    // declared as a link to a file must hash that file's BYTES, not the link
+    // target string. Root link-ness is still bound into the digest separately
+    // (see computeArtifactHash), so swapping a real file for a link is caught.
+    //
+    // This is the opposite policy from links found INSIDE the walk, which are
+    // hashed by target and never followed — that is what bounds the traversal.
+    return [{ rel: path.basename(root), kind: "file", abs: root }];
   }
 
   const out: HashEntry[] = [];
