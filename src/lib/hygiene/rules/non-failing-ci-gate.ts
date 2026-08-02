@@ -25,7 +25,7 @@
  * `|| true` inside a secret-scan pipeline (reusable-governance-gates.yml:25).
  */
 
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { GitFacts } from "../git-facts.js";
 import type { Finding } from "../types.js";
@@ -120,22 +120,25 @@ function scanWorkflow(
 
 export async function nonFailingCiGate(facts: GitFacts): Promise<Finding[]> {
   const findings: Finding[] = [];
-  const dir = join(facts.root, ".github", "workflows");
+  // COMMITTED workflows only — sourced from `git ls-files`, never from a
+  // readdir of the working tree. A gitignored or never-committed
+  // .github/workflows/*.yml is absent from a fresh actions/checkout, so letting
+  // it emit a repo-level finding would make the gate's verdict depend on local
+  // junk. Rule 6 already filters its configs from trackedList; this matches it.
+  const files = facts.trackedList
+    .filter(
+      (p) =>
+        p.startsWith(".github/workflows/") &&
+        // direct children only; ls-files paths are always '/'-separated
+        p.indexOf("/", ".github/workflows/".length) === -1 &&
+        (p.endsWith(".yml") || p.endsWith(".yaml")),
+    )
+    .sort();
 
-  let files: string[] = [];
-  try {
-    files = (await readdir(dir))
-      .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
-      .sort();
-  } catch {
-    files = [];
-  }
-
-  for (const file of files) {
-    const rel = `.github/workflows/${file}`;
+  for (const rel of files) {
     let content: string;
     try {
-      content = await readFile(join(dir, file), "utf8");
+      content = await readFile(join(facts.root, rel), "utf8");
     } catch {
       continue;
     }

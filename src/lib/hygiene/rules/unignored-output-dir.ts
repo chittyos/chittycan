@@ -60,18 +60,26 @@ async function readIfPresent(path: string): Promise<string | null> {
  * we need with a narrow regex rather than adding a dependency.
  */
 async function declaredCandidates(
-  root: string,
+  facts: GitFacts,
 ): Promise<Map<string, string>> {
+  const root = facts.root;
   const out = new Map<string, string>(); // dir -> where it was declared
 
-  const tsconfig = await readIfPresent(join(root, "tsconfig.json"));
+  // COMMITTED manifests only. An untracked or gitignored tsconfig.json /
+  // package.json / wrangler.* is local junk: it is absent from a fresh
+  // actions/checkout, so letting it produce a repo-level finding would make the
+  // verdict depend on the developer's dirty tree. Same discipline as rule 6.
+  const readTracked = async (name: string): Promise<string | null> =>
+    facts.tracked.has(name) ? readIfPresent(join(root, name)) : null;
+
+  const tsconfig = await readTracked("tsconfig.json");
   if (tsconfig) {
     const m = /"outDir"\s*:\s*"([^"]+)"/.exec(tsconfig);
     const dir = m && normalizeDir(m[1]);
     if (dir) out.set(dir, "tsconfig.json compilerOptions.outDir");
   }
 
-  const pkgRaw = await readIfPresent(join(root, "package.json"));
+  const pkgRaw = await readTracked("package.json");
   if (pkgRaw) {
     try {
       const pkg = JSON.parse(pkgRaw) as { scripts?: Record<string, string> };
@@ -94,7 +102,7 @@ async function declaredCandidates(
   }
 
   for (const name of ["wrangler.toml", "wrangler.jsonc", "wrangler.json"]) {
-    const raw = await readIfPresent(join(root, name));
+    const raw = await readTracked(name);
     if (!raw) continue;
     const m =
       /(?:pages_build_output_dir\s*=\s*"([^"]+)")|(?:"pages_build_output_dir"\s*:\s*"([^"]+)")/.exec(
@@ -113,7 +121,7 @@ export async function unignoredOutputDir(facts: GitFacts): Promise<Finding[]> {
   const findings: Finding[] = [];
 
   // (a) declared
-  const declared = await declaredCandidates(facts.root);
+  const declared = await declaredCandidates(facts);
   const declaredDirs = [...declared.keys()];
   const declaredIgnored = await facts.checkIgnored(declaredDirs);
   for (const dir of declaredDirs) {
