@@ -107,6 +107,21 @@ export async function collectGitFacts(repoPath: string): Promise<GitFacts> {
     git(root, ["config", "--get", "core.hooksPath"]),
   ]);
 
+  // A non-zero exit here is a real failure, not data. `git ls-files` exits 0 on
+  // an empty index, so the only way to see non-zero is a broken/unreadable repo
+  // — and silently returning an empty tracked set would make every downstream
+  // rule report "clean" for the wrong reason. Fail loudly, like rev-parse does.
+  if (lsFiles.code !== 0) {
+    throw new Error(
+      `hygiene: 'git ls-files' failed (exit ${lsFiles.code}) in ${root}`,
+    );
+  }
+  if (status.code !== 0) {
+    throw new Error(
+      `hygiene: 'git status --porcelain' failed (exit ${status.code}) in ${root}`,
+    );
+  }
+
   const trackedList = splitNul(lsFiles.stdout);
 
   const checkIgnoreCache = new Map<string, boolean>();
