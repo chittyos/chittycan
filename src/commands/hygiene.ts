@@ -8,18 +8,23 @@ import path from 'path';
 // Types come from there too — redeclaring Finding here would let the two shapes
 // diverge silently behind a passing build.
 import { scanRepo, type Finding, type Severity } from '../lib/hygiene/scan.js';
+// The ordering itself is M1's too. Re-declaring it here is how the two copies
+// drift when a severity level is added: the new level would silently vanish
+// from --min-severity choices and from the render loop.
+import { SEVERITY_ORDER } from '../lib/hygiene/types.js';
 
 export const command = 'hygiene [path]';
 export const describe = 'Scan a git repository for repo-hygiene defects';
 
-// Ordered low → high. `info` sits BELOW `low`, so the default --min-severity=low
-// reports everything except informational findings.
-const SEVERITY_ORDER: Severity[] = ['info', 'low', 'medium', 'high', 'critical'];
+// SEVERITY_ORDER is M1's, ordered HIGHEST first: index 0 = critical .. 4 = info.
+// So a *lower* rank means a *more* severe finding, and the gate is `<=`.
+const UNKNOWN_RANK = -1;
 
 function rank(s: Severity | string): number {
   const i = SEVERITY_ORDER.indexOf(s as Severity);
   // An unrecognized severity must not be silently dropped below the gate.
-  return i === -1 ? SEVERITY_ORDER.length : i;
+  // -1 sorts above `critical` under the `<=` gate, so it always reports.
+  return i === -1 ? UNKNOWN_RANK : i;
 }
 
 const SEVERITY_COLOR: Record<Severity, (s: string) => string> = {
@@ -67,12 +72,33 @@ export function builder(yargs: Argv) {
     .option('min-severity', {
       type: 'string',
       default: 'low',
-      choices: SEVERITY_ORDER.slice().reverse(),
+      choices: SEVERITY_ORDER.slice(),
       describe: 'Report and gate on findings at or above this severity',
+    })
+    // Argument-parsing failures (bad --min-severity, unknown flag) would
+    // otherwise fall through to the GLOBAL .fail() in src/index.ts, which
+    // exits 1 — indistinguishable from "defects found". A command-scoped
+    // .fail() plus a command-scoped .strict() keeps usage errors on exit 2.
+    // Do NOT rethrow `err`: rethrowing routes back to the global handler.
+    .strict()
+    .fail((msg: string, err: Error | undefined) => {
+      const text = msg || err?.message || 'invalid arguments';
+      console.error(chalk.red(`hygiene: ${text}`));
+      console.error(chalk.dim('Run `can hygiene --help` for usage.'));
+      process.exit(2);
     });
 }
 
 export async function handler(argv: ArgumentsCamelCase<any>) {
+  // A truncated pipe (`... --json | head`) makes stdout emit 'error'. With no
+  // listener that is an unhandled 'error' event: a Node crash dump on stderr,
+  // and an exit code that only *looks* like the findings gate. Swallow EPIPE
+  // and let process.exitCode stand — exiting 0 here would report a defective
+  // repo as clean just because the consumer stopped reading.
+  process.stdout.on('error', (err: NodeJS.ErrnoException) => {
+    if (err?.code !== 'EPIPE') throw err;
+  });
+
   const minSeverity = String(argv.minSeverity ?? 'low') as Severity;
   const asJson = Boolean(argv.json);
 
@@ -114,7 +140,8 @@ export async function handler(argv: ArgumentsCamelCase<any>) {
   }
 
   const threshold = rank(minSeverity);
-  const gated = findings.filter((f) => rank(f.severity) >= threshold);
+  // SEVERITY_ORDER is highest-first, so "at or above minSeverity" is `<=`.
+  const gated = findings.filter((f) => rank(f.severity) <= threshold);
 
   if (asJson) {
     // Raw Finding[] — the CI/reviewer interchange format. Not reshaped, not
@@ -130,7 +157,7 @@ export async function handler(argv: ArgumentsCamelCase<any>) {
     if (gated.length === 0) {
       console.log(chalk.green(`No findings at or above "${minSeverity}".`));
     } else {
-      for (const sev of SEVERITY_ORDER.slice().reverse()) {
+      for (const sev of SEVERITY_ORDER) {
         const group = gated.filter((f) => f.severity === sev);
         if (group.length === 0) continue;
         const paint = SEVERITY_COLOR[sev] ?? ((s: string) => s);
@@ -143,6 +170,22 @@ export async function handler(argv: ArgumentsCamelCase<any>) {
         }
         console.log('');
       }
+
+      // rank() deliberately lets an unrecognized severity through the gate, so
+      // it must also be rendered — otherwise it drives a non-zero exit with an
+      // empty body and the operator has nothing to act on.
+      const unknown = gated.filter((f) => rank(f.severity) === UNKNOWN_RANK);
+      if (unknown.length > 0) {
+        console.log(chalk.bold.magenta(`UNKNOWN SEVERITY (${unknown.length})`));
+        for (const f of unknown) {
+          const p = findingPath(f);
+          console.log(`  ${chalk.bold(f.id)} ${chalk.dim(`[severity=${String(f.severity)}]`)}${p ? ` ${chalk.dim(p)}` : ''}`);
+          console.log(`    ${f.title}`);
+          if (f.remediation_hint) console.log(`    ${chalk.green('fix:')} ${f.remediation_hint}`);
+        }
+        console.log('');
+      }
+
       console.log(chalk.red(`${gated.length} finding(s) at or above "${minSeverity}".`));
     }
   }
