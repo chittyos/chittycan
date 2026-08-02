@@ -14,9 +14,14 @@ import type { Finding } from "../types.js";
 const ARTIFACT_SUFFIXES = [".tgz", ".tar.gz", ".tsbuildinfo"];
 
 // `build` is deliberately NOT here: `build/` is as often a directory of build
-// *scripts* as of build *output*. When it really is output it is declared in a
-// committed manifest, and rule 2 (unignored-output-dir, source='declared')
-// covers that case without guessing from the name.
+// *scripts* (build/scripts/gen.sh) as of build *output*, and the name alone
+// cannot tell them apart. KNOWN CONSEQUENCE, stated plainly because nothing
+// else covers it: committed build output under `build/` is no longer detected
+// by any rule. Rule 2 is NOT a substitute — it reports a *declared* output dir
+// that is not gitignored, which is a different fact at a lower severity and
+// says nothing about files already tracked under `build/`. The trade accepted
+// here is a false negative on `build/` over a `high` false positive on every
+// repo that keeps its build scripts there.
 const ARTIFACT_DIRS = new Set(["dist", "out", "coverage", "node_modules"]);
 
 /** The path prefix up to and including the first build-output directory. */
