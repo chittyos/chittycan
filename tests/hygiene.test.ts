@@ -609,4 +609,36 @@ describe("interchange contract", () => {
     // is expected to fall as the defects are fixed, and a count assertion would
     // turn every fix into a test failure.
   });
+
+  /**
+   * Regression: CHITTYCORP/chittyclaw commits
+   * test/fixtures/plugins-install/voice-call-0.0.1.tgz, referenced by
+   * src/plugins/install.test.ts:112. A repo that tests npm-pack / plugin-install
+   * flows MUST commit a real .tgz to install from.
+   *
+   * This rule is `high`, so it gates. Before this fix it produced three
+   * gate-blocking findings on that repo and advised `git rm --cached`, which
+   * would have broken its test suite. Found by a 138-repo base-rate sweep:
+   * 3 of 7 tracked-build-artifact hits ecosystem-wide were this class.
+   *
+   * Both directions are asserted on purpose. Excluding fixtures must not
+   * suppress a genuine packed tarball at the repo root.
+   */
+  it("ignores packed archives under fixture directories, but not real ones", async () => {
+    const repo = createRepo({
+      committed: {
+        "package.json": PACKAGE_JSON,
+        "test/fixtures/plugins-install/voice-call-0.0.1.tgz": "fixture payload",
+        "__fixtures__/sample.tar.gz": "fixture payload",
+        "testdata/golden.tgz": "fixture payload",
+        "release-1.2.3.tgz": "a genuinely committed build artifact",
+      },
+    });
+
+    const ids = byRule(await scanRepo(repo), "tracked-build-artifact").map(
+      (f) => f.id,
+    );
+    expect(ids).toEqual(["tracked-build-artifact:release-1.2.3.tgz"]);
+  });
+
 });

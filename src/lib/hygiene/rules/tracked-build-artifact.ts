@@ -36,7 +36,39 @@ function artifactDirPrefix(path: string): string | null {
   return null;
 }
 
+/**
+ * Directory names under which a packed archive is a deliberate TEST FIXTURE,
+ * not build output. Same reasoning that keeps `.zip` out of ARTIFACT_SUFFIXES:
+ * a repo that tests npm-pack / plugin-install flows must commit a real .tgz to
+ * install FROM, and `git rm --cached` on it breaks that repo's suite.
+ *
+ * Verified case: CHITTYCORP/chittyclaw commits
+ * test/fixtures/plugins-install/voice-call-0.0.1.tgz, referenced by
+ * src/plugins/install.test.ts:112. This rule is `high`, so it gates — a wrong
+ * finding here blocks a merge AND advises a fix that breaks the tests.
+ */
+const FIXTURE_DIRS = new Set([
+  "fixtures",
+  "fixture",
+  "__fixtures__",
+  "testdata",
+  "test-data",
+  "golden",
+  "snapshots",
+  "__snapshots__",
+]);
+
+/** True when any directory segment marks the path as fixture data. */
+function isFixturePath(path: string): boolean {
+  const segments = path.split("/");
+  // Basename excluded: only DIRECTORY segments qualify.
+  return segments.slice(0, -1).some((seg) => FIXTURE_DIRS.has(seg));
+}
+
 function artifactSuffix(path: string): string | null {
+  // A packed archive under a fixtures directory is input to a test, not output
+  // of a build. Suffix-classification must not fire on it.
+  if (isFixturePath(path)) return null;
   for (const suffix of ARTIFACT_SUFFIXES) {
     if (path.endsWith(suffix)) return suffix;
   }
