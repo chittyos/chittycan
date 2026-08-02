@@ -4,6 +4,7 @@ import { surfaceCommand } from "./commands/surface.js";
 import { runCommand } from "./commands/run.js";
 import { scaffoldCommand } from './commands/scaffold.js';
 import * as viewportModule from "./commands/viewport.js";
+import * as hygieneModule from "./commands/hygiene.js";
 
 import yargs from "yargs";
 import chalk from "chalk";
@@ -1197,6 +1198,7 @@ yargs(args)
     }
   )
   .command(viewportModule)
+  .command(hygieneModule)
   .fail((msg, err, yargs) => {
     // Self-Healing Telemetry: log crashes for chittyagent-resolve
     const errorMsg = (err && err.message) ? err.message : (msg || "Unknown crash");
