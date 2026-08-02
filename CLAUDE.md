@@ -135,16 +135,28 @@ opposite behavior shipping:
   turns any CI gate built on it into a vacuous green light. `--allow-empty`
   opts out.
 - **`enable` gates on integrity.** Enabling is what turns on-disk content into
-  *loaded* content, so it refuses a `modified` artifact unless `--force`.
-  Verification that no operation consults is decoration.
+  *loaded* content, so it refuses a `modified` or `missing` artifact unless
+  `--force`. Verification that no operation consults is decoration.
+  `unrecorded` deliberately warns rather than blocks: it is absence of evidence,
+  not evidence of a problem, and blocking would buy nothing — anyone who can
+  strip `contentHash` to force `unrecorded` can equally rewrite it to match
+  their payload, since both live in the same self-attested file.
 - **`--record` will not launder.** Re-recording an artifact that currently fails
   verification requires `--force`, and prints both hashes first.
 
 Only `.git` and `.DS_Store` are excluded from hashing. `node_modules` and
 `__pycache__` are deliberately **included** — they hold executable code, and
 skipping them would let a payload dropped inside an artifact still report as
-verified. Symlinks are hashed by target string and never followed, so a symlink
-loop cannot hang the walk.
+verified. (Measured cost: 20k files / 40MB hash in ~640ms.)
+
+**Symlinks split two ways, and the distinction is load-bearing.** Inside the
+walk, links are hashed by target string and never followed — that is what stops
+a symlink loop from hanging it. But the artifact *root* is resolved with
+`statSync` (follow), not `lstatSync`, because `lstat` reports a
+symlink-to-directory as a non-directory: treating the root as a leaf on that
+basis hashes only the link target and never reads the tree. 23 of the pathed
+artifacts in a real manifest are symlink roots, so getting this backwards
+silently reports them all as verified while inspecting nothing.
 
 ### MCP Server
 

@@ -148,17 +148,33 @@ export async function marketEnable(id: string, opts: { force?: boolean } = {}): 
   // longer matches means the content changed since it was trusted — refuse.
   if (artifact) {
     const integrity = verifyArtifact(artifact);
-    if (integrity.status === "modified" && !opts.force) {
-      console.log(chalk.red(`❌ Refusing to enable ${id}: content does not match its recorded hash.`));
-      console.log(chalk.dim(`   recorded: sha256:${integrity.expected}`));
-      console.log(chalk.dim(`   on disk:  sha256:${integrity.actual}`));
+
+    // `modified` and `missing` are positive evidence that something is wrong:
+    // content changed since it was trusted, or the path is gone. Both block.
+    //
+    // `unrecorded` deliberately does NOT block. It is the absence of evidence,
+    // not evidence of a problem, and blocking on it would not buy security:
+    // contentHash is self-attested and lives in the same file as the artifact
+    // record, so anyone who can strip the hash to force `unrecorded` can just
+    // as easily rewrite it to match their payload. Blocking would add friction
+    // for every never-recorded artifact while closing neither path. It warns.
+    const blocking = integrity.status === "modified" || integrity.status === "missing";
+
+    if (blocking && !opts.force) {
+      console.log(chalk.red(`❌ Refusing to enable ${id}: ${integrity.detail}`));
+      if (integrity.expected) console.log(chalk.dim(`   recorded: sha256:${integrity.expected}`));
+      if (integrity.actual) console.log(chalk.dim(`   on disk:  sha256:${integrity.actual}`));
       console.log(chalk.dim(`\n   Review the change, then re-record with ${chalk.white(`can market verify ${id} --record`)},`));
       console.log(chalk.dim(`   or enable anyway with ${chalk.white("--force")}.\n`));
       process.exitCode = 1;
       return;
     }
-    if (integrity.status === "modified" && opts.force) {
-      console.log(chalk.yellow(`⚠️  ${id} fails verification — enabling anyway because --force was given.`));
+    if (blocking && opts.force) {
+      console.log(chalk.yellow(`⚠️  ${id} fails verification (${integrity.status}) — enabling anyway because --force was given.`));
+    }
+    if (integrity.status === "unrecorded") {
+      console.log(chalk.yellow(`⚠️  ${id} has no recorded hash — enabling unverified content.`));
+      console.log(chalk.dim(`   Establish a baseline with ${chalk.white(`can market verify ${id} --record`)}.`));
     }
   }
 
@@ -289,10 +305,15 @@ export async function marketVerify(opts: {
   // An empty check set is not a pass. Without this, deleting or truncating
   // marketplace.json turns `verify --all` into a vacuous green light.
   if (targets.length === 0) {
+    if (opts.allowEmpty) {
+      console.log(chalk.yellow("⚠️  No artifacts to verify — passing because --allow-empty was given."));
+      console.log(chalk.dim(`   Manifest: ${RUNTIME_MARKETPLACE}`));
+      return;
+    }
     console.log(chalk.red("❌ No artifacts to verify — refusing to report success on an empty set."));
     console.log(chalk.dim(`   Manifest: ${RUNTIME_MARKETPLACE}`));
     console.log(chalk.dim("   Pass --allow-empty if an empty manifest is genuinely expected."));
-    if (!opts.allowEmpty) process.exitCode = 1;
+    process.exitCode = 1;
     return;
   }
 

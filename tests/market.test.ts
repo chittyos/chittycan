@@ -5,7 +5,7 @@
  * No mocking of fs or the marketplace module.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs-extra";
 import path from "path";
 import os from "os";
@@ -281,6 +281,55 @@ describe("symlinks", () => {
     expect(verifyArtifact(a).status).toBe("ok");
   });
 
+  it("descends a symlink ROOT and detects tampering through it", () => {
+    // lstat() reports a symlink-to-dir as a non-directory. Treating the root as
+    // a leaf on that basis hashes only the link target string and never reads
+    // the tree — verification that inspects nothing.
+    const real = makeArtifact("skill-realdir", { "SKILL.md": "trusted\n", "lib.md": "lib\n" });
+    const linkPath = path.join(tmpRoot, "link-root");
+    fs.symlinkSync(real.standalone.path!, linkPath);
+
+    const viaLink = { ...real, id: "skill-vialink", standalone: { ...real.standalone, path: linkPath } };
+    expect(computeArtifactHash(viaLink)!.fileCount).toBe(2);
+
+    recordArtifactHash(viaLink);
+    expect(verifyArtifact(viaLink).status).toBe("ok");
+
+    fs.writeFileSync(path.join(real.standalone.path!, "SKILL.md"), "PWNED\n", "utf8");
+    expect(verifyArtifact(viaLink).status).toBe("modified");
+  });
+
+  it("detects a file added through a symlink root", () => {
+    const real = makeArtifact("skill-realdir2", { "SKILL.md": "trusted\n" });
+    const linkPath = path.join(tmpRoot, "link-root-2");
+    fs.symlinkSync(real.standalone.path!, linkPath);
+
+    const viaLink = { ...real, id: "skill-vialink2", standalone: { ...real.standalone, path: linkPath } };
+    recordArtifactHash(viaLink);
+
+    fs.writeFileSync(path.join(real.standalone.path!, "payload.js"), "evil\n", "utf8");
+    expect(verifyArtifact(viaLink).status).toBe("modified");
+  });
+
+  it("distinguishes a real directory from a symlink to identical content", () => {
+    const real = makeArtifact("skill-shape-real", { "SKILL.md": "same\n" });
+    const linkPath = path.join(tmpRoot, "shape-link");
+    fs.symlinkSync(real.standalone.path!, linkPath);
+
+    const viaLink = { ...real, id: "skill-shape-link", standalone: { ...real.standalone, path: linkPath } };
+    expect(computeArtifactHash(real)!.hash).not.toBe(computeArtifactHash(viaLink)!.hash);
+  });
+
+  it("reports a dangling symlink root as missing, not as a one-entry pass", () => {
+    const a = makeArtifact("skill-danglingroot", { "SKILL.md": "x\n" });
+    const linkPath = path.join(tmpRoot, "dangling-root");
+    fs.symlinkSync(path.join(tmpRoot, "nonexistent"), linkPath);
+    a.standalone.path = linkPath;
+
+    expect(computeArtifactHash(a)).toBeNull();
+    expect(verifyArtifact(a).status).toBe("missing");
+  });
+
   it("detects a symlink retargeted to a different path", () => {
     const a = makeArtifact("skill-retarget", { "SKILL.md": "x\n" });
     const link = path.join(a.standalone.path!, "link");
@@ -319,5 +368,221 @@ describe("recordArtifactHash", () => {
     const result = recordArtifactHash(a);
     expect(result.ok).toBe(false);
     expect(a.contentHash).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Command-level behavior.
+//
+// CONFIG_DIR is derived from os.homedir() at module load, so HOME must be set
+// before a fresh import. Real manifest on disk, real artifacts, no mocks — only
+// console/exitCode are captured so assertions can read them.
+// ---------------------------------------------------------------------------
+
+interface Harness {
+  home: string;
+  out: string[];
+  exitCode: () => number | undefined;
+  enable: (id: string, opts?: { force?: boolean }) => Promise<void>;
+  verify: (opts: Record<string, unknown>) => Promise<void>;
+  addSkill: (id: string, files: Record<string, string>) => string;
+  readManifest: () => any;
+}
+
+async function harness(): Promise<Harness> {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "chittymarket-cmd-"));
+  const prevHome = process.env.HOME;
+  process.env.HOME = home;
+  process.exitCode = undefined;
+
+  vi.resetModules();
+  const lib = await import("../src/lib/marketplace");
+  const cmd = await import("../src/commands/market");
+
+  const out: string[] = [];
+  const spy = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+    out.push(args.map(String).join(" "));
+  });
+
+  cleanups.push(() => {
+    spy.mockRestore();
+    process.env.HOME = prevHome;
+    process.exitCode = undefined;
+    fs.removeSync(home);
+  });
+
+  const manifestPath = path.join(home, ".config", "chitty", "marketplace.json");
+
+  const addSkill = (id: string, files: Record<string, string>): string => {
+    const dir = path.join(home, "skills", id);
+    for (const [rel, content] of Object.entries(files)) {
+      fs.ensureDirSync(path.dirname(path.join(dir, rel)));
+      fs.writeFileSync(path.join(dir, rel), content, "utf8");
+    }
+    const data = lib.loadMarketplace();
+    data.artifacts.push({
+      id, name: id, description: "", type: "skill", category: "ecosystem",
+      access: "readwrite", enabled: false, installMode: "standalone",
+      standalone: { available: true, type: "skill", path: dir },
+      ch1tty: { available: false }, tags: [],
+    });
+    lib.saveMarketplace(data);
+    return dir;
+  };
+
+  return {
+    home,
+    out,
+    exitCode: () => process.exitCode as number | undefined,
+    enable: cmd.marketEnable,
+    verify: cmd.marketVerify as (o: Record<string, unknown>) => Promise<void>,
+    addSkill,
+    readManifest: () => fs.readJsonSync(manifestPath),
+  };
+}
+
+let cleanups: Array<() => void> = [];
+afterEach(() => {
+  for (const fn of cleanups.reverse()) fn();
+  cleanups = [];
+});
+
+describe("marketVerify — empty set", () => {
+  it("fails on an absent manifest rather than reporting a vacuous pass", async () => {
+    const h = await harness();
+    await h.verify({ all: true });
+    expect(h.exitCode()).toBe(1);
+    expect(h.out.join("\n")).toContain("refusing to report success");
+  });
+
+  it("fails on a manifest holding only _comment sentinels", async () => {
+    const h = await harness();
+    const dir = path.join(h.home, ".config", "chitty");
+    fs.ensureDirSync(dir);
+    fs.writeJsonSync(path.join(dir, "marketplace.json"), {
+      version: "1.0.0", lastSync: "", artifacts: [{ _comment: "placeholder" }],
+    });
+    await h.verify({ all: true });
+    expect(h.exitCode()).toBe(1);
+  });
+
+  it("passes with --allow-empty, and says so without printing a failure", async () => {
+    const h = await harness();
+    await h.verify({ all: true, allowEmpty: true });
+    expect(h.exitCode()).toBeUndefined();
+    const text = h.out.join("\n");
+    expect(text).not.toContain("❌");
+    expect(text).toContain("--allow-empty");
+  });
+
+  it("fails for an id that is not registered", async () => {
+    const h = await harness();
+    await h.verify({ id: "skill-nope" });
+    expect(h.exitCode()).toBe(1);
+  });
+});
+
+describe("marketVerify — record guard", () => {
+  it("refuses to re-record a modified artifact and leaves the manifest untouched", async () => {
+    const h = await harness();
+    const dir = h.addSkill("skill-a", { "SKILL.md": "v1\n" });
+    await h.verify({ all: true, record: true });
+
+    const before = h.readManifest().artifacts.find((a: any) => a.id === "skill-a").contentHash;
+    expect(before).toMatch(/^[0-9a-f]{64}$/);
+
+    fs.writeFileSync(path.join(dir, "SKILL.md"), "TAMPERED\n", "utf8");
+    await h.verify({ all: true, record: true });
+
+    expect(h.exitCode()).toBe(1);
+    const after = h.readManifest().artifacts.find((a: any) => a.id === "skill-a").contentHash;
+    expect(after).toBe(before);
+  });
+
+  it("is fail-atomic: one modified target blocks recording of a clean sibling", async () => {
+    const h = await harness();
+    const dirA = h.addSkill("skill-a", { "SKILL.md": "a\n" });
+    h.addSkill("skill-b", { "SKILL.md": "b\n" });
+    await h.verify({ all: true, record: true });
+
+    fs.writeFileSync(path.join(dirA, "SKILL.md"), "TAMPERED\n", "utf8");
+    const bBefore = h.readManifest().artifacts.find((a: any) => a.id === "skill-b").contentHash;
+
+    // Re-record would rewrite b too; the guard must stop the whole run.
+    fs.writeFileSync(path.join(h.home, "skills", "skill-b", "SKILL.md"), "b2\n", "utf8");
+    await h.verify({ all: true, record: true });
+
+    expect(h.exitCode()).toBe(1);
+    expect(h.readManifest().artifacts.find((a: any) => a.id === "skill-b").contentHash).toBe(bBefore);
+  });
+
+  it("re-records when --force is given", async () => {
+    const h = await harness();
+    const dir = h.addSkill("skill-a", { "SKILL.md": "v1\n" });
+    await h.verify({ all: true, record: true });
+    const before = h.readManifest().artifacts.find((a: any) => a.id === "skill-a").contentHash;
+
+    fs.writeFileSync(path.join(dir, "SKILL.md"), "v2\n", "utf8");
+    await h.verify({ all: true, record: true, force: true });
+
+    expect(h.readManifest().artifacts.find((a: any) => a.id === "skill-a").contentHash).not.toBe(before);
+  });
+});
+
+describe("marketEnable — integrity gate", () => {
+  it("refuses to enable a modified artifact", async () => {
+    const h = await harness();
+    const dir = h.addSkill("skill-a", { "SKILL.md": "trusted\n" });
+    await h.verify({ id: "skill-a", record: true });
+
+    fs.writeFileSync(path.join(dir, "SKILL.md"), "TAMPERED\n", "utf8");
+    await h.enable("skill-a");
+
+    expect(h.exitCode()).toBe(1);
+    expect(h.out.join("\n")).toContain("Refusing to enable");
+  });
+
+  it("refuses to enable an artifact whose path no longer exists", async () => {
+    const h = await harness();
+    const dir = h.addSkill("skill-a", { "SKILL.md": "x\n" });
+    await h.verify({ id: "skill-a", record: true });
+
+    fs.removeSync(dir);
+    await h.enable("skill-a");
+
+    expect(h.exitCode()).toBe(1);
+  });
+
+  it("enables a modified artifact when --force is given, and says it did", async () => {
+    const h = await harness();
+    const dir = h.addSkill("skill-a", { "SKILL.md": "trusted\n" });
+    await h.verify({ id: "skill-a", record: true });
+    fs.writeFileSync(path.join(dir, "SKILL.md"), "TAMPERED\n", "utf8");
+
+    await h.enable("skill-a", { force: true });
+
+    expect(h.exitCode()).toBeUndefined();
+    expect(h.out.join("\n")).toContain("--force");
+  });
+
+  it("enables an unrecorded artifact but warns that content is unverified", async () => {
+    const h = await harness();
+    h.addSkill("skill-a", { "SKILL.md": "x\n" });
+
+    await h.enable("skill-a");
+
+    expect(h.exitCode()).toBeUndefined();
+    expect(h.out.join("\n")).toContain("no recorded hash");
+  });
+
+  it("enables cleanly when the artifact matches its recorded hash", async () => {
+    const h = await harness();
+    h.addSkill("skill-a", { "SKILL.md": "x\n" });
+    await h.verify({ id: "skill-a", record: true });
+
+    await h.enable("skill-a");
+
+    expect(h.exitCode()).toBeUndefined();
+    expect(h.out.join("\n")).not.toContain("Refusing");
   });
 });

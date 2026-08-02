@@ -154,12 +154,15 @@ interface HashEntry {
  * loop cannot hang the walk and a dangling symlink is data rather than a crash.
  */
 function collectEntries(root: string): HashEntry[] {
-  const rootStat = fs.lstatSync(root);
-  if (!rootStat.isDirectory()) {
+  // statSync (follow), NOT lstatSync, to decide leaf-vs-directory. lstat reports
+  // a symlink-to-directory as a non-directory, which would hash the artifact as
+  // one entry containing only the link target and never read the tree at all.
+  // Links are still never followed *inside* the walk — that is where ELOOP lives.
+  if (!fs.statSync(root).isDirectory()) {
     return [
       {
         rel: path.basename(root),
-        kind: rootStat.isSymbolicLink() ? "symlink" : "file",
+        kind: fs.lstatSync(root).isSymbolicLink() ? "symlink" : "file",
         abs: root,
       },
     ];
@@ -210,9 +213,13 @@ export function computeArtifactHash(
   const root = resolveHome(artifact.standalone?.path ?? "");
   if (!root) return null;
 
-  let rootStat: fs.Stats;
+  let isDir: boolean;
+  let rootIsLink: boolean;
   try {
-    rootStat = fs.lstatSync(root);
+    // statSync follows the link, so a dangling root throws here and reports as
+    // unverifiable rather than silently hashing to a one-entry digest.
+    isDir = fs.statSync(root).isDirectory();
+    rootIsLink = fs.lstatSync(root).isSymbolicLink();
   } catch {
     return null;
   }
@@ -220,8 +227,11 @@ export function computeArtifactHash(
   const entries = collectEntries(root);
   const digest = crypto.createHash("sha256");
 
-  // Bind shape and cardinality so file-vs-directory is part of the identity.
-  updateFramed(digest, Buffer.from(rootStat.isDirectory() ? "dir" : "file", "utf8"));
+  // Bind shape and cardinality so file-vs-directory is part of the identity,
+  // and whether the root itself is a link, so swapping a real dir for a link
+  // (or repointing it) changes the digest even when the contents match.
+  updateFramed(digest, Buffer.from(isDir ? "dir" : "file", "utf8"));
+  updateFramed(digest, Buffer.from(rootIsLink ? "rootlink" : "rootreal", "utf8"));
   updateFramed(digest, Buffer.from(String(entries.length), "utf8"));
 
   for (const entry of entries) {
