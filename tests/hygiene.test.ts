@@ -14,6 +14,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { scanRepo } from "../src/lib/hygiene/scan";
 import { SEVERITY_ORDER, type Finding } from "../src/lib/hygiene/types";
 import { createRepo, cleanupRepos } from "./helpers/git-fixture";
@@ -124,6 +125,30 @@ describe("rule 2: unignored-output-dir", () => {
     });
   });
 
+  /**
+   * A CLEAN checkout: `.gitignore` genuinely covers `dist/`, and nothing has
+   * been built yet. This is the state of every GitHub Actions checkout of this
+   * repository before `npm run build` runs — exactly the environment the rule's
+   * own docstring claims it is decidable in — so the rule must stay silent.
+   *
+   * KNOWN RED. This test currently fails, and the failure is the point: it
+   * reports a real false positive owned by module M1, not by this suite.
+   *   Root cause: src/lib/hygiene/git-facts.ts `checkIgnored()` feeds bare
+   *   directory names ("dist") to `git check-ignore --stdin`. The pattern
+   *   `dist/` matches directories only, and git decides "is a directory" from
+   *   the path string plus the worktree, so an absent `dist` returns exit 1
+   *   ("not ignored") and src/lib/hygiene/rules/unignored-output-dir.ts:128
+   *   emits `unignored-output-dir:declared:dist`.
+   *   Proven directly: in a fresh repo whose .gitignore is `node_modules/\ndist/`,
+   *   `git check-ignore -v dist` exits 1 while `git check-ignore -v dist/` exits 0
+   *   and prints `.gitignore:2:dist/`.
+   *   Fix (M1's file, not this one): pass `${dir}/` for directory candidates.
+   *
+   * The previous version of this test wrote an untracked `dist/index.js` into
+   * the fixture so the directory existed on disk. That made the assertion pass
+   * and certified the false positive as intended behavior. It has been removed
+   * deliberately; do NOT reintroduce it to turn the suite green.
+   */
   it("produces nothing when .gitignore really covers the outDir", async () => {
     const repo = createRepo({
       committed: {
@@ -131,9 +156,6 @@ describe("rule 2: unignored-output-dir", () => {
         "tsconfig.json": TSCONFIG,
         ".gitignore": "node_modules/\n.wrangler/\ndist/\n",
       },
-      // A real build output directory on disk: the ignored path must be
-      // genuinely ignored, not merely absent.
-      untracked: { "dist/index.js": "// compiled\n" },
     });
 
     expect(byRule(await scanRepo(repo), "unignored-output-dir")).toEqual([]);
@@ -208,9 +230,11 @@ describe("rule 4: no-local-hook-layer", () => {
  * assertions below fail loudly if the file is ever renumbered.
  */
 function realGovernanceGateLines(): { sortPipe: string; exitZero: string } {
+  // `__dirname` does not exist in this package ("type": "module"); vitest's SSR
+  // transform injects it, but the same file under plain node ESM would throw.
+  const repoRoot = fileURLToPath(new URL("..", import.meta.url));
   const abs = path.resolve(
-    __dirname,
-    "..",
+    repoRoot,
     ".github/workflows/reusable-governance-gates.yml",
   );
   const lines = fs.readFileSync(abs, "utf8").split("\n");
@@ -254,6 +278,46 @@ describe("rule 5: non-failing-ci-gate", () => {
       scope: "step",
       job: "publish",
       path: ".github/workflows/publish.yml",
+    });
+  });
+
+  it("flags job-level continue-on-error: true and reports scope `job`", async () => {
+    // `continue-on-error:` sits as a sibling of `runs-on:`/`steps:` under the
+    // job key, so the jobs/steps indentation state machine
+    // (non-failing-ci-gate.ts:61-98) must classify it as job scope. Without this
+    // fixture the `scope` discriminator is only ever exercised in its "step"
+    // branch, and hardcoding `const scope = "step"` would pass the whole suite.
+    const workflow = [
+      "name: Publish",
+      "on:",
+      "  push:",
+      "    branches: [main]",
+      "jobs:",
+      "  provenance:",
+      "    runs-on: ubuntu-latest",
+      "    continue-on-error: true",
+      "    steps:",
+      "      - uses: actions/checkout@v4",
+      "      - name: Attest",
+      "        run: npm run build",
+      "",
+    ].join("\n");
+
+    const repo = createRepo({
+      committed: {
+        "package.json": PACKAGE_JSON,
+        ".github/workflows/publish.yml": workflow,
+      },
+    });
+
+    const hits = byRule(await scanRepo(repo), "non-failing-ci-gate");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].severity).toBe("medium");
+    expect(hits[0].evidence).toMatchObject({
+      detector: "continue-on-error",
+      scope: "job",
+      job: "provenance",
+      line: 8,
     });
   });
 
@@ -321,6 +385,84 @@ describe("rule 5: non-failing-ci-gate", () => {
       committed: {
         "package.json": PACKAGE_JSON,
         ".github/workflows/reusable-governance-gates.yml": workflow,
+      },
+    });
+
+    expect(byRule(await scanRepo(repo), "non-failing-ci-gate")).toEqual([]);
+  });
+
+  /**
+   * Isolates the TEST_TOOL guard (non-failing-ci-gate.ts:33).
+   *
+   * `mkdir -p artifacts || true` ends in a trailing `|| true`, so SUPPRESSED
+   * matches it. The only thing keeping the rule quiet is that no test/lint tool
+   * is invoked. Widening TEST_TOOL to match every line (e.g. `/(?:)/`) turns
+   * this red on its own — the previous "critical negative" tolerated that
+   * mutation because neither of its lines reached the TEST_TOOL check at all.
+   */
+  it("requires a test tool: a non-test command ending in `|| true` is not flagged", async () => {
+    const workflow = [
+      "name: Package",
+      "on: [push]",
+      "jobs:",
+      "  package:",
+      "    runs-on: ubuntu-latest",
+      "    steps:",
+      "      - uses: actions/checkout@v4",
+      "      - name: Stage artifacts",
+      "        shell: bash",
+      "        run: |",
+      "          mkdir -p artifacts || true",
+      "          cp chittycan-0.5.1.tgz artifacts/ || true",
+      "",
+    ].join("\n");
+
+    const repo = createRepo({
+      committed: {
+        "package.json": PACKAGE_JSON,
+        ".github/workflows/package.yml": workflow,
+      },
+    });
+
+    expect(byRule(await scanRepo(repo), "non-failing-ci-gate")).toEqual([]);
+  });
+
+  /**
+   * Isolates the SUPPRESSED anchor (non-failing-ci-gate.ts:36).
+   *
+   * `eslint_out="$(npx eslint . || true)"` invokes a lint tool, so TEST_TOOL
+   * matches. The `|| true` is *inside* a command substitution whose output is
+   * inspected afterwards — the same shape as
+   * reusable-governance-gates.yml:25 — so the step is not a suppressed gate and
+   * the anchored SUPPRESSED (`...\s*$`) correctly declines. Replacing that
+   * regex with the naive unanchored `/(\|\|\s*true|exit\s+0)/` turns this red on
+   * its own.
+   */
+  it("requires trailing suppression: `$(npx eslint . || true)` capture is not flagged", async () => {
+    const workflow = [
+      "name: Lint report",
+      "on: [push]",
+      "jobs:",
+      "  lint:",
+      "    runs-on: ubuntu-latest",
+      "    steps:",
+      "      - uses: actions/checkout@v4",
+      "      - name: Collect lint output",
+      "        shell: bash",
+      "        run: |",
+      "          set -uo pipefail",
+      '          eslint_out="$(npx eslint . || true)"',
+      '          if [[ -n "${eslint_out}" ]]; then',
+      '            echo "${eslint_out}"',
+      "            exit 1",
+      "          fi",
+      "",
+    ].join("\n");
+
+    const repo = createRepo({
+      committed: {
+        "package.json": PACKAGE_JSON,
+        ".github/workflows/lint-report.yml": workflow,
       },
     });
 
@@ -410,13 +552,44 @@ describe("rule 6: deployed-without-source", () => {
 // Interchange contract anchor
 // ---------------------------------------------------------------------------
 
+/**
+ * The `Severity` union is the interchange contract with
+ * chittyentity/workers/shared/remediation-loop.ts:38. That file lives in a
+ * SEPARATE repository, so this suite cannot read it and therefore cannot detect
+ * the partner drifting — no test here can. What it CAN do is pin M1's exported
+ * constant to a transcription of the partner's union, so that changing
+ * types.ts alone breaks loudly instead of silently desyncing.
+ *
+ * Transcribed 2026-08-02 from remediation-loop.ts:38:
+ *   export type Severity = "critical" | "high" | "medium" | "low" | "info";
+ */
+const REMEDIATION_LOOP_SEVERITIES = [
+  "critical",
+  "high",
+  "medium",
+  "low",
+  "info",
+];
+
 describe("interchange contract", () => {
+  it("keeps SEVERITY_ORDER identical to the remediation-loop Severity union", () => {
+    expect([...SEVERITY_ORDER]).toEqual(REMEDIATION_LOOP_SEVERITIES);
+  });
+
   it("scans this repository and returns a well-formed Finding[]", async () => {
     // process.cwd() under vitest is the project root of this checkout — a real
     // repository with real history, not a fixture.
     const findings = await scanRepo(process.cwd());
 
     expect(Array.isArray(findings)).toBe(true);
+
+    // Without this, every per-finding assertion below is vacuous: a scanRepo()
+    // that returned [] would satisfy the whole loop. This checkout really does
+    // carry a committed npm tarball at the repository root, so the shape checks
+    // run against at least one real finding.
+    expect(findings.map((f) => f.id)).toContain(
+      "tracked-build-artifact:chittycan-0.5.1.tgz",
+    );
 
     for (const f of findings) {
       expect(typeof f.id).toBe("string");
@@ -425,11 +598,7 @@ describe("interchange contract", () => {
       expect(f.title.length).toBeGreaterThan(0);
       expect(typeof f.description).toBe("string");
       expect(f.description.length).toBeGreaterThan(0);
-      // The `Severity` union is the interchange contract with
-      // chittyentity/workers/shared/remediation-loop.ts:38. Checking membership
-      // against the exported list (rather than a hardcoded literal here) makes
-      // this test break loudly if that union ever drifts.
-      expect(SEVERITY_ORDER).toContain(f.severity);
+      expect(REMEDIATION_LOOP_SEVERITIES).toContain(f.severity);
       if (f.evidence !== undefined) expect(typeof f.evidence).toBe("object");
       if (f.remediation_hint !== undefined) {
         expect(typeof f.remediation_hint).toBe("string");
