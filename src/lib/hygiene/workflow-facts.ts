@@ -167,7 +167,10 @@ export async function collectWorkflowFacts(
 
   const [branchRes, statusRes, inProgress] = await Promise.all([
     git(repoRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]),
-    git(repoRoot, ["status", "--porcelain", "--untracked-files=normal"]),
+    // `all`, not `normal`: git collapses an untracked directory to a single
+    // `?? big/` entry, so a repo with 96 loose files reported 21. A fleet
+    // survey under-reporting protected work is the dangerous direction.
+    git(repoRoot, ["status", "--porcelain", "--untracked-files=all"]),
     inProgressOperation(repoRoot),
   ]);
 
