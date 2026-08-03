@@ -21,7 +21,7 @@ import { capture, listCaptures, restoreCommand } from "../lib/hygiene/capture.js
 import { collectWorkflowFacts } from "../lib/hygiene/workflow-facts.js";
 import { evaluate, autoExecutable, needsHuman, driftBand } from "../lib/hygiene/policy.js";
 import type { Trigger } from "../lib/hygiene/policy.js";
-import { recordOffered, analyse } from "../lib/hygiene/journal.js";
+import { recordOffered, analyse, emitLearnedPatterns } from "../lib/hygiene/journal.js";
 import { reconcile, formatReconcile } from "../lib/hygiene/reconcile.js";
 import { guarded, readDisabled, reenable, degradedCapture, KILL_SWITCH } from "../lib/hygiene/failsafe.js";
 
@@ -92,6 +92,12 @@ async function status(root: string, trigger: Trigger, json: boolean) {
     }
   }
   console.log("");
+
+  // Feed the repo's EXISTING proposal loop, whose input file has had two
+  // readers and no writer since it was written.
+  await emitLearnedPatterns(
+    new Map(decisions.map((d) => [d.id, { command: d.command, because: d.because }])),
+  );
 
   await recordOffered(facts.root, trigger, decisions, {
     branch: facts.branch,

@@ -24,7 +24,7 @@
  * @canonical-uri chittycanon://core/libraries/hygiene-journal
  */
 
-import { appendFile, readFile, mkdir } from "node:fs/promises";
+import { appendFile, readFile, mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Decision, Tier, Trigger } from "./policy.js";
@@ -165,4 +165,75 @@ export async function analyse(path = JOURNAL_PATH): Promise<RuleStats[]> {
             : "signal";
     return s;
   });
+}
+
+/**
+ * Emit learned patterns into the EXISTING loop rather than beside it.
+ *
+ * This repo already has an observe -> reflect -> propose chain:
+ * `learning-pipeline.ts` reflects, `proposal-generator.ts:139` and
+ * `chittyos-sync.ts:505` read `~/.chittycan/reflections/failure-patterns.json`
+ * and turn patterns into proposed skills, agents, and registered tools.
+ *
+ * That file has TWO readers and ZERO writers. The chain has therefore never
+ * produced anything — `can propose` mines an empty set, and has since the code
+ * was written. Adding a private store next to it would have made a seventh
+ * unwired loop in an ecosystem whose defining problem is unwired loops.
+ *
+ * So the journal writes the format those readers already expect. Hygiene
+ * decisions become the input to proposal generation: a rule that keeps firing
+ * and keeps being accepted is exactly the signal `proposal-generator` exists
+ * to act on.
+ *
+ * Shape is dictated by the consumers, not chosen here — chittyos-sync.ts:509
+ * reads `p.pattern`, `p.fix`, `p.cli`, `p.command`, `p.confidence`, `p.error`.
+ */
+export const PATTERNS_FILE = join(
+  homedir(),
+  ".chittycan",
+  "reflections",
+  "failure-patterns.json",
+);
+
+export interface LearnedPattern {
+  pattern: string;
+  fix: string;
+  cli: string;
+  command: string;
+  confidence: number;
+  error: string;
+}
+
+/**
+ * Only rules with resolved outcomes are emitted. An unresolved rule has no
+ * evidence behind it, and feeding speculation into a proposal generator would
+ * manufacture confident noise — the failure mode already visible in this
+ * ecosystem's registry.
+ */
+export async function emitLearnedPatterns(
+  decisionsById: Map<string, { command: string; because: string }>,
+): Promise<{ written: number; path: string }> {
+  const stats = await analyse();
+  const patterns: LearnedPattern[] = stats
+    .filter((s) => s.usefulness !== null && s.verdict !== "wrong")
+    .map((s) => {
+      const d = decisionsById.get(s.ruleId);
+      return {
+        pattern: s.ruleId,
+        fix: d?.command ?? `see rule ${s.ruleId}`,
+        cli: "git",
+        command: d?.command ?? "",
+        confidence: s.usefulness ?? 0,
+        error: (d?.because ?? "").slice(0, 200),
+      };
+    });
+
+  try {
+    await mkdir(dirname(PATTERNS_FILE), { recursive: true });
+    await writeFile(PATTERNS_FILE, JSON.stringify(patterns, null, 2), "utf8");
+    return { written: patterns.length, path: PATTERNS_FILE };
+  } catch {
+    // Never fatal: feeding the downstream loop is a bonus, not the point.
+    return { written: 0, path: PATTERNS_FILE };
+  }
 }
