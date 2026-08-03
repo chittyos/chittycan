@@ -3,11 +3,23 @@
  *
  * Contract: `applyFixes(repoPath, findings)` writes to the WORKING TREE and
  * stops there. It never stages, never commits, never deletes file content,
- * never touches git config, and never runs `git rm` in any form. The only git
- * commands it issues are read-only (`status --porcelain`) plus `checkout --` on
- * its OWN writes when it has to roll itself back.
+ * never touches git config, and never runs `git rm` in any form. The git
+ * commands it issues are read-only (`status --porcelain`, plus whatever
+ * read-only queries a fixer's `plan()` makes to re-derive its preconditions)
+ * plus `checkout --` on its OWN writes when it has to roll itself back.
  *
- * Three properties make that safe rather than merely stated:
+ * That statement is about THIS PROCESS, and on its own it is misleading, so:
+ * a fixer may still write a file whose CONTENT schedules a mutation to run
+ * later — chiefly a `package.json` script. Such an effect is outside every
+ * safety net below: it is not in `writes`, not covered by the subset assertion,
+ * and not undone by `revert()` or by `git revert <sha>`. It must therefore be
+ * declared in `FixPlan.deferred_effects`, which `applyFixes` returns to the
+ * caller with the plan so the CLI and any PR body can print it next to the
+ * reversal. Disclosure is the guarantee here; containment is not available.
+ *
+ * `applyFixes` deliberately does NOT execute or validate deferred effects.
+ *
+ * Three properties make the file writes safe rather than merely stated:
  *   1. it refuses to run on a dirty worktree, so the resulting diff is provably
  *      its own;
  *   2. every fixer declares an exact write-set, which is asserted against

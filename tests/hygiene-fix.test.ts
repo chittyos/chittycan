@@ -74,7 +74,12 @@ describe("applyFixes — the coupled commit-msg-hook fixer", () => {
       fs.readFileSync(path.join(root, "package.json"), "utf8"),
     );
     expect(pkg.scripts.prepare).toBe(
-      "npm run build && git config core.hooksPath .githooks 2>/dev/null || true",
+      "npm run build && { git config core.hooksPath .githooks 2>/dev/null || true; }",
+    );
+    // The deferred config mutation is outside `writes` by nature, so the
+    // contract is that it is DECLARED rather than hidden.
+    expect(result.applied[0].deferred_effects?.join(" ")).toMatch(
+      /core\.hooksPath/,
     );
   });
 
@@ -190,6 +195,111 @@ describe("applyFixes — the coupled commit-msg-hook fixer", () => {
     const result = await applyFixes(root, forced);
     expect(result.applied).toHaveLength(0);
     expect(result.skipped[0].reason).toMatch(/already tracks a hook layer/);
+  });
+
+  /**
+   * Regression fixtures for the three defects a review found by hand. Each one
+   * damaged a real repository; none of them was caught by any test above,
+   * because every test above asserts on the fixer's OWN artifact rather than on
+   * what the artifact does to the repo it lands in.
+   */
+  describe("damage regressions", () => {
+    it("does not swallow the exit status of the pre-existing prepare command", async () => {
+      const root = bareRepo();
+      await applyFixes(root, await scanRepo(root));
+      const prepare = JSON.parse(
+        fs.readFileSync(path.join(root, "package.json"), "utf8"),
+      ).scripts.prepare as string;
+
+      // Run the composed script through a real /bin/sh with the repo's own
+      // `npm run build` stood in for by a command that fails, exactly as a
+      // broken build would. `(a && b) || true` returns 0 here; the brace group
+      // returns the failure.
+      const status = (script: string): number => {
+        try {
+          execFileSync("/bin/sh", ["-c", script], { cwd: root, stdio: "pipe" });
+          return 0;
+        } catch (e: any) {
+          return typeof e.status === "number" ? e.status : 1;
+        }
+      };
+
+      expect(status(prepare.replace("npm run build", "sh -c 'exit 2'"))).toBe(2);
+      // ...while a failing `git config` alone is still tolerated.
+      expect(
+        status(prepare.replace("npm run build", "true").replace(
+          "git config core.hooksPath .githooks",
+          "git config --file /nonexistent/dir/x y z",
+        )),
+      ).toBe(0);
+    });
+
+    it("refuses when the hooks directory git consults already has a hook installed", async () => {
+      // The Python `pre-commit` framework and `lefthook install` both work this
+      // way: root config file, hook written into .git/hooks. Nothing about it is
+      // tracked, so the detector cannot see it — the FIXER must veto.
+      const root = bareRepo({ ".pre-commit-config.yaml": "repos: []\n" });
+      const hooksDir = git(root, ["rev-parse", "--git-path", "hooks"]).trim();
+      const abs = path.isAbsolute(hooksDir) ? hooksDir : path.join(root, hooksDir);
+      fs.mkdirSync(abs, { recursive: true });
+      const guard = path.join(abs, "pre-commit");
+      fs.writeFileSync(guard, "#!/bin/sh\necho SECRET SCAN BLOCKED >&2\nexit 1\n");
+      fs.chmodSync(guard, 0o755);
+
+      const findings = await scanRepo(root);
+      expect(findings.map((f) => f.id)).toEqual(
+        expect.arrayContaining(["no-commit-msg-lint", "no-local-hook-layer"]),
+      );
+
+      const result = await applyFixes(root, findings);
+      expect(result.applied).toHaveLength(0);
+      expect(result.skipped[0].reason).toMatch(/already contains installed hook/);
+      expect(fs.existsSync(path.join(root, ".githooks"))).toBe(false);
+      expect(git(root, ["status", "--porcelain"]).trim()).toBe("");
+
+      // And the pre-existing hook still blocks a commit — it did not go silent.
+      fs.writeFileSync(path.join(root, "src/index.ts"), "export const x = 3;\n");
+      let blocked = false;
+      try {
+        git(root, ["commit", "-a", "--quiet", "-m", "feat(x): y"]);
+      } catch {
+        blocked = true;
+      }
+      expect(blocked).toBe(true);
+    });
+
+    it("refuses when core.hooksPath is already set — unset would not restore it", async () => {
+      const root = bareRepo();
+      git(root, ["config", "--local", "core.hooksPath", ".config/githooks"]);
+      const result = await applyFixes(root, await scanRepo(root));
+      expect(result.applied).toHaveLength(0);
+      expect(result.skipped[0].reason).toMatch(/core\.hooksPath is already set/);
+      expect(git(root, ["config", "--get", "core.hooksPath"]).trim()).toBe(
+        ".config/githooks",
+      );
+      expect(fs.existsSync(path.join(root, ".githooks"))).toBe(false);
+    });
+
+    it("refuses when the repository has linked worktrees (core.hooksPath is shared)", async () => {
+      const root = bareRepo();
+      const wt = path.join(root, "..", path.basename(root) + "-wt");
+      git(root, ["worktree", "add", "--quiet", "-b", "side", wt]);
+      try {
+        const result = await applyFixes(root, await scanRepo(root));
+        expect(result.applied).toHaveLength(0);
+        expect(result.skipped[0].reason).toMatch(/worktrees/);
+        expect(fs.existsSync(path.join(root, ".githooks"))).toBe(false);
+      } finally {
+        fs.rmSync(wt, { recursive: true, force: true });
+      }
+    });
+
+    it("publishes a reversal that removes only its own file", async () => {
+      const root = bareRepo();
+      const result = await applyFixes(root, await scanRepo(root));
+      expect(result.applied[0].reversal).toContain("rm -f .githooks/commit-msg");
+      expect(result.applied[0].reversal).not.toContain("git clean");
+    });
   });
 
   it("deletes nothing: every pre-existing tracked path still exists after a run", async () => {

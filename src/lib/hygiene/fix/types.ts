@@ -23,6 +23,16 @@ export interface FixPlan {
    * writes land, `git status --porcelain` must report nothing outside this set.
    */
   writes: string[];
+  /**
+   * Effects this plan schedules that are NOT file writes and therefore sit
+   * outside every guarantee `writes` carries — they are not covered by the
+   * write-set subset assertion, not undone by the engine's rollback, and not
+   * undone by `git revert <sha>`. A deferred effect is inherently un-netted, so
+   * the contract is disclosure: if a fixer schedules one it MUST state it here,
+   * in plain language, together with its inverse. A fixer that mutates state
+   * outside the working tree without declaring it is a bug in the fixer.
+   */
+  deferred_effects?: string[];
   /** The one command that undoes it. Printed with the fix; never executed here. */
   reversal: string;
   /** Human-readable one-liner for CLI output and PR bodies. */
