@@ -56,6 +56,7 @@ import { promisify } from "node:util";
 import { isAbsolute, join } from "node:path";
 import type { GitFacts } from "../../git-facts.js";
 import type { Finding } from "../../types.js";
+import { trackedHookConfigFiles } from "../../rules/local-hook-layer.js";
 import type { FixPlan, FixSkip, Fixer } from "../types.js";
 
 const execFileAsync = promisify(execFile);
@@ -76,9 +77,21 @@ const INSTALLER_PATTERN =
  * build"` install gate into a no-op and letting a broken build install cleanly.
  * `;` does not fix it either (a script's status is its last command's). Only the
  * brace group confines the `|| true` to the `git config` call.
+ *
+ * The read-first guard is equally load-bearing, and for the same reason as
+ * veto 1 in `plan()`: `plan()` sees the repo once, at fix time, but this line
+ * runs on EVERY `npm install` forever after. If a developer later sets their
+ * own `core.hooksPath`, an unconditional write here would silently clobber it
+ * on their next install. Reading first means the wiring only ever fills a gap;
+ * it never overwrites a value someone else chose. This is the identical form
+ * chittycan commits for itself — the generator and the dogfood must not
+ * diverge, or every other repo gets the weaker variant.
  */
-const WIRE = " && { git config core.hooksPath .githooks 2>/dev/null || true; }";
-const WIRE_ALONE = "git config core.hooksPath .githooks 2>/dev/null || true";
+const WIRE_BODY =
+  "git config core.hooksPath >/dev/null 2>&1 || " +
+  "git config core.hooksPath .githooks 2>/dev/null || true";
+const WIRE = ` && { ${WIRE_BODY}; }`;
+const WIRE_ALONE = WIRE_BODY;
 
 /** The deferred, non-file effect this plan schedules. Never inside `writes`. */
 const DEFERRED_EFFECT =
@@ -165,9 +178,22 @@ export const commitMsgHookFixer: Fixer = {
     }
 
     // Re-derived precondition: no tracked hook layer of any kind.
-    const trackedHookFiles = facts.trackedList.filter((p) =>
-      HOOK_DIR_PREFIXES.some((d) => p.startsWith(d)),
-    );
+    //
+    // Two shapes, and BOTH are required. Directory-shaped layers (.husky/,
+    // hooks/, …) are the obvious case. Root-config-shaped layers
+    // (.pre-commit-config.yaml, lefthook.yml, simple-git-hooks) are the one
+    // that bit us: their committed artifact is a single root file and their
+    // hooks are GENERATED at install time, so in a fresh clone the directory
+    // scan sees nothing and veto 2 below (which inspects the installed hooks
+    // dir) sees nothing either. Without this, the fixer repoints
+    // core.hooksPath away from a working pre-commit/lefthook layer and the
+    // repo's hooks go silent with no error — verified end to end.
+    const trackedHookFiles = [
+      ...facts.trackedList.filter((p) =>
+        HOOK_DIR_PREFIXES.some((d) => p.startsWith(d)),
+      ),
+      ...trackedHookConfigFiles(facts.trackedList),
+    ];
     if (trackedHookFiles.length > 0) {
       return skip(
         `repo already tracks a hook layer (${trackedHookFiles[0]}); repointing ` +

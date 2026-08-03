@@ -35,19 +35,36 @@ const HOOK_DIRS = ["hooks", "githooks", ".githooks"];
  * BLOCKED before the "fix" landed silently after. Recognising these files here
  * removes the false finding and closes that blind spot at its source.
  */
-const HOOK_CONFIG_FILES = [
-  ".pre-commit-config.yaml",
-  ".pre-commit-config.yml",
-  "lefthook.yml",
-  "lefthook.yaml",
-  ".lefthook.yml",
-  "simple-git-hooks.json",
-  ".simple-git-hooks.json",
-  ".huskyrc",
-  ".huskyrc.json",
-];
 const INSTALLER_PATTERN =
   /husky|lefthook|simple-git-hooks|pre-commit|core\.hooksPath/i;
+
+/**
+ * Hook layers whose committed artifact is a ROOT CONFIG FILE, not a directory.
+ *
+ * The directory-shaped check above misses these entirely: the Python
+ * `pre-commit` framework and `lefthook` both commit a single root YAML and
+ * generate `.git/hooks/*` at install time. In a fresh `actions/checkout` no
+ * hook has been installed yet, so neither the directory scan nor any
+ * `.git/hooks` inspection sees anything — and the rule would claim the repo has
+ * no committed hook layer while the layer is sitting in the tree.
+ *
+ * This is a tracked-file fact like every other input to this rule, so it is
+ * allowed to drive the finding.
+ */
+const HOOK_CONFIG_FILES = [
+  /^\.pre-commit-config\.ya?ml$/,
+  /^\.?lefthook\.ya?ml$/,
+  /^\.?lefthook\.toml$/,
+  /^\.?lefthook\.json$/,
+  /^\.simple-git-hooks\.(js|cjs|mjs|json)$/,
+  /^simple-git-hooks\.(js|cjs|mjs|json)$/,
+  /^\.huskyrc(\.json)?$/,
+];
+
+/** Tracked root-level hook-framework config files. */
+export function trackedHookConfigFiles(trackedList: string[]): string[] {
+  return trackedList.filter((p) => HOOK_CONFIG_FILES.some((re) => re.test(p)));
+}
 
 async function localOnlyEvidence(
   facts: GitFacts,
@@ -74,6 +91,7 @@ export async function localHookLayer(facts: GitFacts): Promise<Finding[]> {
   const hookDirFiles = facts.trackedList.filter((p) =>
     HOOK_DIRS.some((d) => p.startsWith(`${d}/`)),
   );
+  const hookConfigFiles = trackedHookConfigFiles(facts.trackedList);
 
   const installerScripts: string[] = [];
   if (facts.tracked.has("package.json")) {
@@ -92,15 +110,11 @@ export async function localHookLayer(facts: GitFacts): Promise<Finding[]> {
     }
   }
 
-  // Tracked, so it installs on clone — the same guarantee a .husky/ directory
-  // gives. Checked against the committed file list, never the working tree.
-  const hookConfigs = HOOK_CONFIG_FILES.filter((f) => facts.tracked.has(f));
-
   if (
     husky.length > 0 ||
     hookDirFiles.length > 0 ||
-    installerScripts.length > 0 ||
-    hookConfigs.length > 0
+    hookConfigFiles.length > 0 ||
+    installerScripts.length > 0
   ) {
     return [];
   }
@@ -112,17 +126,18 @@ export async function localHookLayer(facts: GitFacts): Promise<Finding[]> {
       title: "No committed git hook layer",
       description:
         "The repository commits no hook layer: no .husky/, no tracked hooks/ | " +
-        "githooks/ | .githooks/ directory, no pre-commit / lefthook / " +
-        "simple-git-hooks config, and no package.json prepare/postinstall that " +
-        "installs one. Nothing a contributor clones will run any pre-commit " +
-        "or commit-msg check, so every guarantee depends on CI catching it later.",
+        "githooks/ | .githooks/ directory, no root hook-framework config " +
+        "(.pre-commit-config.yaml, lefthook.yml, simple-git-hooks, .huskyrc), " +
+        "and no package.json prepare/postinstall that installs one. Nothing a " +
+        "contributor clones will run any pre-commit or commit-msg check, so " +
+        "every guarantee depends on CI catching it later.",
       evidence: {
         rule: "no-local-hook-layer",
         path: ".",
         tracked_husky_files: husky,
         tracked_hook_dir_files: hookDirFiles,
+        tracked_hook_config_files: hookConfigFiles,
         package_json_installer_scripts: installerScripts,
-        tracked_hook_config_files: hookConfigs,
         local_only: await localOnlyEvidence(facts),
       },
       remediation_hint:

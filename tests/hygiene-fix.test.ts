@@ -73,8 +73,13 @@ describe("applyFixes — the coupled commit-msg-hook fixer", () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.join(root, "package.json"), "utf8"),
     );
+    // Read-first, then brace-grouped. The read guard means a developer who
+    // later sets their own core.hooksPath does not get it clobbered on their
+    // next `npm install`; the brace group means `|| true` cannot swallow the
+    // exit status of the pre-existing `npm run build`.
     expect(pkg.scripts.prepare).toBe(
-      "npm run build && { git config core.hooksPath .githooks 2>/dev/null || true; }",
+      "npm run build && { git config core.hooksPath >/dev/null 2>&1 || " +
+        "git config core.hooksPath .githooks 2>/dev/null || true; }",
     );
     // The deferred config mutation is outside `writes` by nature, so the
     // contract is that it is DECLARED rather than hidden.
@@ -242,10 +247,14 @@ describe("applyFixes — the coupled commit-msg-hook fixer", () => {
     });
 
     it("refuses when the hooks directory git consults already has a hook installed", async () => {
-      // The Python `pre-commit` framework and `lefthook install` both work this
-      // way: root config file, hook written into .git/hooks. Nothing about it is
-      // tracked, so the detector cannot see it — the FIXER must veto.
-      const root = bareRepo({ ".pre-commit-config.yaml": "repos: []\n" });
+      // A hook installed into the directory git actually consults, with NOTHING
+      // tracked to reveal it — a hand-written hook, or a framework whose config
+      // is gitignored. The detector genuinely cannot see this (it reads tracked
+      // state only, by design), so both rules fire and the FIXER's veto is the
+      // only thing standing between the user and a silently disabled hook.
+      // Deliberately no tracked config file here: with one, the rule itself
+      // clears and this test would no longer exercise the veto at all.
+      const root = bareRepo();
       const hooksDir = git(root, ["rev-parse", "--git-path", "hooks"]).trim();
       const abs = path.isAbsolute(hooksDir) ? hooksDir : path.join(root, hooksDir);
       fs.mkdirSync(abs, { recursive: true });
@@ -274,6 +283,49 @@ describe("applyFixes — the coupled commit-msg-hook fixer", () => {
       }
       expect(blocked).toBe(true);
     });
+
+    // The false-positive class that actually damaged repos in the sweep: a
+    // committed hook layer whose artifact is a ROOT CONFIG FILE, not a
+    // directory. `pre-commit` and `lefthook` both work this way and both
+    // GENERATE their hooks at install time — so in a fresh clone there is no
+    // directory to find and no installed hook to inspect, and every other veto
+    // is blind. Before this was recognised, the fixer wrote `.githooks/` and
+    // repointed core.hooksPath, and the repo's real hooks went silent.
+    for (const config of [
+      ".pre-commit-config.yaml",
+      "lefthook.yml",
+      ".lefthook.yaml",
+      "simple-git-hooks.json",
+    ]) {
+      it(`treats a tracked ${config} as a committed hook layer`, async () => {
+        const root = bareRepo({ [config]: "{}\n" });
+
+        // The rule itself must clear: this repo HAS a committed hook layer.
+        const findings = await scanRepo(root);
+        expect(findings.map((f) => f.id)).not.toContain("no-local-hook-layer");
+
+        // Defence in depth: even handed both findings, the fixer must refuse.
+        const forced = [
+          ...findings,
+          { id: "no-local-hook-layer", severity: "low", title: "forced",
+            description: "forced", evidence: {} },
+        ] as Awaited<ReturnType<typeof scanRepo>>;
+        const result = await applyFixes(root, forced);
+        expect(result.applied).toHaveLength(0);
+        expect(result.skipped[0].reason).toMatch(/already tracks a hook layer/);
+
+        // And nothing was written or redirected.
+        expect(fs.existsSync(path.join(root, ".githooks"))).toBe(false);
+        expect(git(root, ["status", "--porcelain"]).trim()).toBe("");
+        // `git config --get` exits 1 when the key is unset, so ask for a
+        // sentinel default rather than letting the non-zero exit throw.
+        expect(
+          git(root, [
+            "config", "--default", "UNSET", "--get", "core.hooksPath",
+          ]).trim(),
+        ).toBe("UNSET");
+      });
+    }
 
     it("refuses when core.hooksPath is already set — unset would not restore it", async () => {
       const root = bareRepo();

@@ -109,7 +109,7 @@ jobs:
             # every tracked modification in the worktree, which is broader than the
             # invariant this handler defends.
             git checkout -- package.json || true
-            git clean -fd .githooks/ || true
+            rm -f .githooks/commit-msg || true
             exit 1
           fi
           git status --porcelain --untracked-files=all
@@ -163,7 +163,7 @@ jobs:
             echo "and restore that value; a bare \`--unset\` would leave your own hook layer dead."
             echo
             echo '```'
-            echo 'git checkout -- package.json && git clean -fd .githooks/'
+            echo 'git checkout -- package.json && rm -f .githooks/commit-msg'
             echo '# then either:  git config core.hooksPath <your previous value>'
             echo '#         or:   git config --unset core.hooksPath   (only if it was previously unset)'
             echo '```'
