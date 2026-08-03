@@ -105,7 +105,10 @@ jobs:
           done <<< "$(git status --porcelain --untracked-files=all)"
           if [ "$bad" -ne 0 ]; then
             echo "Reverting and failing: the fixer wrote outside its declared write-set." >&2
-            git checkout -- . || true
+            # Scoped to the declared write-set only. `git checkout -- .` would discard
+            # every tracked modification in the worktree, which is broader than the
+            # invariant this handler defends.
+            git checkout -- package.json || true
             git clean -fd .githooks/ || true
             exit 1
           fi
@@ -143,24 +146,32 @@ jobs:
           {
             echo "Applied by \`can hygiene --fix\` in a GitHub Actions run. No human edited these bytes."
             echo
-            echo "Rules fixed:"
+            echo "Rules the fixer reports as applied (derived from \`hygiene-fix.json\`, not hardcoded —"
+            echo "a rule can remain in \`findings\` because the fix writes untracked files that the"
+            echo "post-fix re-scan has not yet seen):"
             echo
-            echo "- \`no-commit-msg-lint\`"
-            echo "- \`no-local-hook-layer\`"
+            jq -r '(.fixes // []) | map(.rule_ids[]) | unique | .[] | "- `\(.)`"' \
+              "$RUNNER_TEMP/hygiene-fix.json"
             echo
-            echo "Both are cleared by one artifact: \`.githooks/commit-msg\` (mode 100755) plus the"
-            echo "\`prepare\` wiring in \`package.json\`. No devDependency is added."
+            echo "Files written:"
             echo
-            echo "Reversal:"
+            jq -r '(.fixes // []) | map(.files_written[]) | unique | .[] | "- `\(.)`"' \
+              "$RUNNER_TEMP/hygiene-fix.json"
+            echo
+            echo "Reversal — note that \`core.hooksPath\` is a LOCAL git setting. If you already had"
+            echo "one, record it BEFORE merging (\`git config --show-origin --get core.hooksPath\`)"
+            echo "and restore that value; a bare \`--unset\` would leave your own hook layer dead."
             echo
             echo '```'
-            echo 'git checkout -- package.json && git clean -fd .githooks/ && git config --unset core.hooksPath'
+            echo 'git checkout -- package.json && git clean -fd .githooks/'
+            echo '# then either:  git config core.hooksPath <your previous value>'
+            echo '#         or:   git config --unset core.hooksPath   (only if it was previously unset)'
             echo '```'
             echo
             echo "After merge:"
             echo
             echo '```'
-            echo 'git revert --no-edit <fix-sha> && git config --unset core.hooksPath'
+            echo 'git revert --no-edit <fix-sha>   # then restore core.hooksPath as above'
             echo '```'
             echo
             echo "Verification run after the writes: \`npm ci\`, \`npm run build\`, \`npm test\` all passed."

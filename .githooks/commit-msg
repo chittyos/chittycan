@@ -1,6 +1,8 @@
 #!/bin/sh
 # Conventional Commits subject check. Installed by `can hygiene --fix`.
-# Undo: git config --unset core.hooksPath
+# Undo: restore whatever `git config --show-origin --get core.hooksPath` held before
+#       this was wired. Only `--unset` if it was previously unset — a bare unset
+#       kills a pre-existing husky/lefthook layer instead of restoring it.
 set -eu
 subject="$(sed -n '1p' "$1")"
 case "$subject" in
