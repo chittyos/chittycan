@@ -192,7 +192,7 @@ describe("can hygiene --fix", () => {
     const undo = r.stdout.split("\n").find((l) => l.includes("undo:"));
     expect(undo).toBeDefined();
     expect(undo).toContain("git checkout -- package.json");
-    expect(undo).toContain("git clean -fd .githooks/");
+    expect(undo).toContain("rm -f .githooks/commit-msg");
     expect(undo).toContain("git config --unset core.hooksPath");
   });
 
