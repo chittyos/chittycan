@@ -209,7 +209,7 @@ export const RULES: Rule[] = [
         `If this session dies, or another session runs 'git clean', they are ` +
         `unrecoverable. This writes them to a ref without touching your index ` +
         `or working tree.`,
-      command: `can hygiene capture ${f.root}`,
+      command: `can wip capture ${f.root}`,
       reversal: `git -C ${f.root} update-ref -d refs/wip/<ref>`,
     }),
   },
@@ -224,7 +224,7 @@ export const RULES: Rule[] = [
         `These were captured by a session that exited without cleaning up. ` +
         `Reporting them is the whole point — work is only lost when nobody ` +
         `knows it exists.`,
-      command: `can hygiene orphans ${f.root}`,
+      command: `can wip list ${f.root}`,
       reversal: null,
     }),
   },
@@ -318,7 +318,7 @@ export const RULES: Rule[] = [
           `the default branch. Deleting them loses nothing, and leaving them ` +
           `costs attention: they are indistinguishable from real pending work ` +
           `in every branch listing.`,
-        command: `can hygiene branches --prune-merged ${f.root}`,
+        command: `can wip branches --prune-merged ${f.root}`,
         reversal: `git -C ${f.root} branch <name> <sha>  # sha is printed before deletion`,
       };
     },
@@ -365,7 +365,7 @@ export const RULES: Rule[] = [
           `permanently recoverable and reachable by git log, but it stops ` +
           `appearing in branch lists and PR flows. Nothing is deleted; it ` +
           `just stops asking for a decision it can no longer receive.`,
-        command: `can hygiene branches --archive-gone ${f.root}`,
+        command: `can wip branches --archive-gone ${f.root}`,
         reversal: `git -C ${f.root} branch <name> refs/archive/<name>`,
       };
     },
