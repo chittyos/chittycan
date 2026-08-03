@@ -658,4 +658,38 @@ describe("interchange contract", () => {
     expect(ids).toEqual(["tracked-build-artifact:release-1.2.3.tgz"]);
   });
 
+
+  /**
+   * Regression: CHITTYCORP/chittyclaw commits a real `.pre-commit-config.yaml`
+   * and was still reported as having no hook layer, because the rule only
+   * recognised DIRECTORY-shaped layers (.husky/, hooks/, githooks/) plus
+   * package.json script patterns.
+   *
+   * That blind spot was load-bearing for a proven repo-damaging defect: an
+   * auto-fixer built on this rule set `core.hooksPath=.githooks` on such a
+   * repo, silently overriding its installed `.git/hooks/pre-commit`. A commit
+   * that was BLOCKED before the "fix" landed SILENTLY after. Verified
+   * end-to-end by an adversarial verification pass.
+   *
+   * Both directions asserted: recognising these files must not make the rule
+   * stop firing on a repo that genuinely has no hook layer.
+   */
+  it("recognises file-configured hook layers, and still fires without one", async () => {
+    for (const cfg of [
+      ".pre-commit-config.yaml",
+      "lefthook.yml",
+      ".simple-git-hooks.json",
+    ]) {
+      const repo = createRepo({
+        committed: { "package.json": PACKAGE_JSON, [cfg]: "repos: []\n" },
+      });
+      expect(byRule(await scanRepo(repo), "no-local-hook-layer")).toEqual([]);
+    }
+
+    const bare = createRepo({ committed: { "package.json": PACKAGE_JSON } });
+    expect(
+      byRule(await scanRepo(bare), "no-local-hook-layer").map((f) => f.id),
+    ).toEqual(["no-local-hook-layer"]);
+  });
+
 });
