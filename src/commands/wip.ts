@@ -193,6 +193,12 @@ export async function handler(
         }
         const r = g.result!;
         if (argv.json) { console.log(JSON.stringify(r, null, 2)); break; }
+        if (r.refused) {
+          console.error(`\n  REFUSED: ${r.refused}`);
+          console.error("  Finish or abort the operation, then capture.\n");
+          process.exitCode = 5;
+          return;
+        }
         if (r.noop) { console.log("  nothing uncommitted — no capture needed"); break; }
         console.log(`\n  captured ${r.files.length} file(s)`);
         console.log(`  ${r.ref}  ${r.sha.slice(0, 12)}`);

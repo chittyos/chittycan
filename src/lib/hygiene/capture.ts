@@ -49,6 +49,24 @@ export interface CaptureResult {
   noop: boolean;
   /** Command that removes it, for the caller to report. */
   reversal: string;
+  /** Set when capture declined because the repo is mid-operation. */
+  refused?: string;
+}
+
+/** Which git operation is mid-flight, or null. Mirrors workflow-facts. */
+async function inProgress(root: string): Promise<string | null> {
+  const dir = (await git(root, ["rev-parse", "--git-dir"]).catch(() => "")).trim();
+  if (!dir) return null;
+  const base = dir.startsWith("/") ? dir : `${root}/${dir}`;
+  const { existsSync } = await import("node:fs");
+  for (const [f, label] of [
+    ["rebase-merge", "rebase"], ["rebase-apply", "rebase"],
+    ["MERGE_HEAD", "merge"], ["CHERRY_PICK_HEAD", "cherry-pick"],
+    ["REVERT_HEAD", "revert"], ["BISECT_LOG", "bisect"],
+  ] as [string, string][]) {
+    if (existsSync(`${base}/${f}`)) return label;
+  }
+  return null;
 }
 
 export interface CaptureOptions {
@@ -73,10 +91,18 @@ async function git(
   return stdout;
 }
 
-/** Uncommitted work: modified-tracked plus untracked-not-ignored. */
+/**
+ * Uncommitted work: modified-tracked plus untracked-not-ignored.
+ *
+ * `--untracked-files=all` is required, not cosmetic. With `normal`, git
+ * collapses an untracked directory to a single `?? big/` entry — so 600 new
+ * files reported as "captured 1 file". The SAVE was correct (add -- . takes
+ * the directory); only the count lied. Under-reporting a save is the dangerous
+ * direction: the operator concludes their work was not captured.
+ */
 async function looseWork(root: string): Promise<string[]> {
   const out = await git(root, [
-    "status", "--porcelain", "--untracked-files=normal",
+    "status", "--porcelain", "--untracked-files=all",
   ]);
   return out
     .split("\n")
@@ -99,10 +125,25 @@ export async function capture(
   root: string,
   opts: CaptureOptions = {},
 ): Promise<CaptureResult> {
+  // The policy has an `operation-in-progress` ALARM, but capture is reachable
+  // directly and was not consulting it — so a conflicted mid-merge tree got
+  // snapshotted as if it were deliberate work. Refusing here, at the
+  // safety-critical path, rather than trusting every caller to check first.
+  const blocked = await inProgress(root);
+  if (blocked) {
+    return {
+      ref: "", sha: "", files: [], noop: true, reversal: "",
+      refused: `${blocked} in progress — the tree is a partial result, not a state anyone chose`,
+    };
+  }
+
   const files = await looseWork(root);
+  // A repo with no commits has no HEAD. That is a legitimate state (git init,
+  // first files not yet committed) and must not crash the safety path.
+  const headSha = await git(root, ["rev-parse", "--short", "HEAD"]).catch(() => "");
   const id =
     opts.sessionId ??
-    (await git(root, ["rev-parse", "--short", "HEAD"])).trim() +
+    (headSha.trim() || "root") +
       "-" +
       Math.abs(hash(files.join("\n"))).toString(36);
   const ref = `refs/wip/${id}`;
@@ -116,12 +157,13 @@ export async function capture(
   try {
     const env = { GIT_INDEX_FILE: indexFile };
     // Seed from HEAD so the snapshot is a full tree, not just the delta —
-    // the result is a normal commit anyone can check out or diff.
-    await git(root, ["read-tree", "HEAD"], env);
+    // the result is a normal commit anyone can check out or diff. On a repo
+    // with no commits there is nothing to seed from; the empty index is right.
+    await git(root, ["read-tree", "HEAD"], env).catch(() => "");
     await git(root, ["add", "--", ...(opts.paths ?? ["."])], env);
     const tree = (await git(root, ["write-tree"], env)).trim();
 
-    const head = (await git(root, ["rev-parse", "HEAD"])).trim();
+    const head = (await git(root, ["rev-parse", "HEAD"]).catch(() => "")).trim();
     const branch = (
       await git(root, ["rev-parse", "--abbrev-ref", "HEAD"]).catch(() => "HEAD")
     ).trim();
@@ -137,9 +179,11 @@ export async function capture(
       (files.length > 40 ? `\n  … and ${files.length - 40} more` : "") +
       (opts.note ? `\n\n${opts.note}` : "");
 
-    const sha = (
-      await git(root, ["commit-tree", tree, "-p", head, "-m", message])
-    ).trim();
+    // No parent when the repo has no commits yet — a root commit is correct.
+    const args = head
+      ? ["commit-tree", tree, "-p", head, "-m", message]
+      : ["commit-tree", tree, "-m", message];
+    const sha = (await git(root, args)).trim();
     await git(root, ["update-ref", ref, sha]);
 
     return {
