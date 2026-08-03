@@ -22,6 +22,7 @@ import { collectWorkflowFacts } from "../lib/hygiene/workflow-facts.js";
 import { evaluate, autoExecutable, needsHuman, driftBand } from "../lib/hygiene/policy.js";
 import type { Trigger } from "../lib/hygiene/policy.js";
 import { recordOffered, analyse } from "../lib/hygiene/journal.js";
+import { reconcile, formatReconcile } from "../lib/hygiene/reconcile.js";
 
 const TIER_ORDER = ["alarm", "human", "review", "propose", "auto"] as const;
 
@@ -58,9 +59,18 @@ async function status(root: string, trigger: Trigger, json: boolean) {
     );
   }
 
+  // Printed unconditionally, even when there is nothing else to say. A
+  // binding that only appears alongside other output is a binding nobody
+  // reads on the quiet days, which is most days.
+  const rec = await reconcile(facts.root);
+  if (rec.length) {
+    console.log("\n  temporary code, and what retires it:");
+    for (const line of formatReconcile(rec)) console.log(line);
+  }
+
   if (decisions.length === 0) {
-    console.log("\n  nothing to do\n");
-    return 0;
+    console.log("\n  nothing else to do\n");
+    return rec.filter((r) => r.retirable).length;
   }
 
   console.log("");
