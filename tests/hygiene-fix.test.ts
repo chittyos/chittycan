@@ -225,12 +225,19 @@ describe("applyFixes — the coupled commit-msg-hook fixer", () => {
       };
 
       expect(status(prepare.replace("npm run build", "sh -c 'exit 2'"))).toBe(2);
-      // ...while a failing `git config` alone is still tolerated.
+
+      // ...while a failing `git config` alone is still tolerated — the point of
+      // the `|| true` in the first place. Prove the inner command really does
+      // fail before asserting the composed form passes, otherwise the second
+      // assertion holds vacuously and stops guarding anything.
+      const badConfig = "git config --file /nonexistent/dir/x y z";
+      expect(status(badConfig)).not.toBe(0);
       expect(
-        status(prepare.replace("npm run build", "true").replace(
-          "git config core.hooksPath .githooks",
-          "git config --file /nonexistent/dir/x y z",
-        )),
+        status(
+          prepare
+            .replace("npm run build", "true")
+            .replace("git config core.hooksPath .githooks", badConfig),
+        ),
       ).toBe(0);
     });
 
