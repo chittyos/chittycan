@@ -12,16 +12,36 @@ import { scanRepo, type Finding, type Severity } from '../lib/hygiene/scan.js';
 // drift when a severity level is added: the new level would silently vanish
 // from --min-severity choices and from the render loop.
 import { SEVERITY_ORDER } from '../lib/hygiene/types.js';
-// The fixer engine is M1's. This file owns the CLI surface only: it never
-// decides what is fixable, never writes a file itself, and never touches git.
-// Every write, every precondition, and every declared-write-set check lives in
-// applyFixes(). Re-implementing any of that here would let the CLI apply a fix
-// the engine's safety invariants would have refused.
-import { applyFixes, FixPreconditionError } from '../lib/hygiene/fix/apply.js';
-// FixPlan/FixSkip are M1's shapes. `FixPlan.writes` is the declared write-set;
-// the CLI renders it as `files_written` because that is the field name the
-// autofix workflow and the PR body read.
-import type { FixPlan, FixSkip } from '../lib/hygiene/fix/types.js';
+// NO AUTO-FIX SURFACE. `can hygiene` is report-only, deliberately.
+//
+// An earlier revision of this file exposed `--fix`, wired to
+// src/lib/hygiene/fix/apply.ts and its single `commit-msg-hook` fixer. Review
+// established that the fixer can damage a real repository, and that both
+// defects are design defects in the fixer, not in this rendering surface:
+//
+//   1. It appended ` && git config core.hooksPath .githooks 2>/dev/null || true`
+//      to any pre-existing `prepare` script. POSIX `&&` and `||` are equal
+//      precedence and left-associative, so `A && B || true` always exits 0.
+//      chittycan's own prepare is `npm run build`; after the "fix", a failing
+//      build no longer fails `npm install`. Measured: `npm run prepare` went
+//      from exit 2 to exit 0 with a real TypeScript error present.
+//   2. Its "refuses when a hook layer already exists" precondition inspected
+//      only TRACKED files under .husky/ hooks/ githooks/ .githooks/ and the
+//      package.json prepare/postinstall scripts. It never read
+//      GitFacts.coreHooksPath and never looked at .pre-commit-config.yaml as a
+//      tracked file. A mixed Python+JS repo using `pre-commit install` sails
+//      past every precondition, and the committed wiring then repoints
+//      core.hooksPath away from the working hook layer on every contributor
+//      machine — the exact harm the fixer's own docstring claims it refuses.
+//
+// Neither is repairable from this file. Both rules — `no-commit-msg-lint` and
+// `no-local-hook-layer` — remain fully reported with their remediation hints;
+// only the automated write path is gone. A fixer that silently disables a
+// repo's CI-failure signal and its hook layer is worse than no fixer.
+//
+// `--fix` is therefore not a recognised flag: `.strict()` below rejects it with
+// a usage error on exit 2, which is distinguishable from the findings gate
+// (exit 1). Do not re-add it without re-adding the fixer's safety story.
 
 export const command = 'hygiene [path]';
 export const describe = 'Scan a git repository for repo-hygiene defects';
@@ -85,12 +105,6 @@ export function builder(yargs: Argv) {
       choices: SEVERITY_ORDER.slice(),
       describe: 'Report and gate on findings at or above this severity',
     })
-    .option('fix', {
-      type: 'boolean',
-      default: false,
-      describe:
-        'Apply the auto-fixable subset of findings to the working tree (writes files; never stages, commits, or pushes)',
-    })
     // Argument-parsing failures (bad --min-severity, unknown flag) would
     // otherwise fall through to the GLOBAL .fail() in src/index.ts, which
     // exits 1 — indistinguishable from "defects found". A command-scoped
@@ -117,7 +131,6 @@ export async function handler(argv: ArgumentsCamelCase<any>) {
 
   const minSeverity = String(argv.minSeverity ?? 'low') as Severity;
   const asJson = Boolean(argv.json);
-  const doFix = Boolean(argv.fix);
 
   let repo: string;
   try {
@@ -147,9 +160,7 @@ export async function handler(argv: ArgumentsCamelCase<any>) {
   }
 
   // scanRepo() is always called UNFILTERED. --min-severity governs rendering
-  // and the exit code, never what the detector or the fixer can see: both
-  // auto-fixable rules are severity `low`, so gating the scan first would make
-  // `--fix --min-severity high` silently apply nothing.
+  // and the exit code, never what the detector can see.
   async function scan(): Promise<Finding[]> {
     try {
       return await scanRepo(repo);
@@ -161,33 +172,7 @@ export async function handler(argv: ArgumentsCamelCase<any>) {
     }
   }
 
-  let findings: Finding[] = await scan();
-  let applied: FixPlan[] = [];
-  let skipped: FixSkip[] = [];
-
-  if (doFix) {
-    try {
-      const result = await applyFixes(repo, findings);
-      applied = result.applied ?? [];
-      skipped = result.skipped ?? [];
-    } catch (err: any) {
-      if (err instanceof FixPreconditionError) {
-        // A precondition failure (dirty worktree) is an ENVIRONMENT failure,
-        // not a findings verdict: exit 2, never 1. Nothing was written.
-        console.error(chalk.red(`hygiene: ${err.message}`));
-        process.exit(2);
-        return;
-      }
-      console.error(chalk.red(`hygiene: fix failed: ${err?.stack ?? err?.message ?? err}`));
-      process.exit(2);
-      return;
-    }
-
-    // Re-scan AFTER the writes. The rendered findings and the exit code must
-    // describe the repo as it now stands, or the report would demand fixes
-    // that this very invocation already applied.
-    findings = await scan();
-  }
+  const findings: Finding[] = await scan();
 
   const threshold = rank(minSeverity);
   // SEVERITY_ORDER is highest-first, so "at or above minSeverity" is `<=`.
@@ -196,43 +181,17 @@ export async function handler(argv: ArgumentsCamelCase<any>) {
   if (asJson) {
     // Raw Finding[] — the CI/reviewer interchange format. Not reshaped, not
     // grouped, not renamed. Gated set, so the JSON explains the exit code.
-    // `fixes`/`skipped` appear ONLY under --fix: emitting them empty on the
-    // read-only path would change the byte output the gate already consumes.
+    // EXACTLY three keys. M4's gate parses this; no `fixes`, no `skipped`.
     const payload: Record<string, unknown> = {
       repo,
       scanned_at: new Date().toISOString(),
       findings: gated,
     };
-    if (doFix) {
-      payload.fixes = applied.map((f) => ({
-        id: f.id,
-        rule_ids: f.rule_ids,
-        files_written: f.writes,
-        reversal: f.reversal,
-      }));
-      payload.skipped = skipped.map((s) => ({ id: s.id, reason: s.reason }));
-    }
     process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
   } else {
     console.log(chalk.bold.blue(`Repo hygiene: ${repo}`));
     console.log(chalk.dim(`min-severity: ${minSeverity}`));
     console.log('');
-
-    if (doFix) {
-      for (const f of applied) {
-        console.log(
-          chalk.green(`fixed: ${f.rule_ids.join(', ')}`) + ` -> ${f.writes.join(', ')}`
-        );
-        console.log(chalk.dim(`  undo: ${f.reversal}`));
-      }
-      for (const s of skipped) {
-        console.log(chalk.yellow(`skipped: ${s.id} (${s.reason})`));
-      }
-      if (applied.length === 0 && skipped.length === 0) {
-        console.log(chalk.dim('no auto-fixable findings.'));
-      }
-      console.log('');
-    }
 
     if (gated.length === 0) {
       console.log(chalk.green(`No findings at or above "${minSeverity}".`));

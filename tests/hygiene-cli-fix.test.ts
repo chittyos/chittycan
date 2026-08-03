@@ -1,21 +1,38 @@
 /**
- * Consumer tests for `can hygiene --fix` (src/commands/hygiene.ts).
+ * Regression tests pinning `can hygiene` as REPORT-ONLY (src/commands/hygiene.ts).
  *
- * Same style as tests/hygiene-cli.test.ts: the built CLI is SPAWNED, against
- * real temp git repositories with real files and real commits. Exit codes are
- * the contract under test, and capturing them in-process would mean spying on
- * process.exit — faking the thing being asserted. No vi.mock anywhere.
+ * This file used to test `can hygiene --fix`. That flag is gone. It was REMOVED
+ * rather than repaired, because its single fixer could damage a real repository
+ * in two ways that are design defects in the fixer, not in this CLI surface:
  *
- * What these pin, and why each one exists:
- *   - dirty tree  -> exit 2 and NOT ONE BYTE written. This is what makes the
- *     resulting diff provably the fixer's own.
- *   - `--fix --min-severity high` still applies the low-severity fixers. Both
- *     auto-fixable rules are `low`; if the threshold were applied before the
- *     fixer ran, the CI gate (which runs at `high`) would fix nothing forever.
- *   - a remaining unfixable `high` finding still drives exit 1 after fixing.
- *   - the --json shape the autofix workflow parses.
- *   - a second --fix is a no-op: idempotence, asserted on disk, not claimed.
- *   - no `--fix` leaves the fixture byte-identical: the gate path is read-only.
+ *   1. it appended ` && git config core.hooksPath .githooks 2>/dev/null || true`
+ *      to a pre-existing `prepare` script; `A && B || true` always exits 0 in
+ *      POSIX sh, so a failing `npm run build` in prepare stopped failing
+ *      `npm install`;
+ *   2. its "already has a hook layer" precondition read only tracked files under
+ *      .husky/ hooks/ githooks/ .githooks/ and package.json scripts — never
+ *      `core.hooksPath`, never a tracked `.pre-commit-config.yaml` — so it
+ *      silently disabled working hook layers it claimed to refuse to touch.
+ *
+ * So these tests assert the REMOVAL holds, and that removing it did not weaken
+ * the detector. Same style as tests/hygiene-cli.test.ts: the built CLI is
+ * SPAWNED against real temp git repositories with real files and real commits.
+ * No vi.mock anywhere.
+ *
+ * What each one exists to catch:
+ *   - `--fix` is rejected as an unknown flag on exit 2 (usage), never silently
+ *     accepted and never confused with the findings gate (exit 1);
+ *   - the rejected invocation writes NOTHING — no .githooks/, byte-identical
+ *     package.json. This is the actual safety property; the exit code is not.
+ *     A future re-add of the flag that reaches the old fixer fails here;
+ *   - a repo whose `prepare` runs a REAL failing build still fails after a
+ *     `--fix` attempt. That is defect (1) pinned as unreachable, and it is the
+ *     branch the previous version of this file never exercised: every fixture
+ *     it built had no `prepare` key at all;
+ *   - the read-only --json payload has EXACTLY {repo, scanned_at, findings}.
+ *     M4's gate parses it; `fixes`/`skipped` must not reappear;
+ *   - `no-commit-msg-lint` and `no-local-hook-layer` still FIRE with remediation
+ *     hints. They are intentionally report-only, not silenced.
  */
 
 import { describe, it, expect, beforeAll } from "vitest";
@@ -62,9 +79,8 @@ function snapshot(dir: string): Record<string, string> {
 }
 
 /**
- * A repo that fires BOTH fixable rules and nothing else that is fixable:
- * no commit-msg lint config, no hook layer, and a byte-canonical package.json
- * the fixer is allowed to edit.
+ * A repo that fires BOTH formerly-"fixable" rules: no commit-msg lint config
+ * and no hook layer of any kind.
  */
 function newFixableRepo(label: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `chittycan-hygfix-${label}-`));
@@ -79,153 +95,123 @@ function newFixableRepo(label: string): string {
   return dir;
 }
 
+/**
+ * A repo whose `prepare` runs a real build step that FAILS — the shape the
+ * removed fixer damaged. `npm run prepare` must exit non-zero both before and
+ * after a `--fix` attempt.
+ */
+function newPrepareRepo(label: string): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `chittycan-hygprep-${label}-`));
+  git(dir, "init", "-q");
+  git(dir, "config", "user.email", "hygiene-test@chitty.cc");
+  git(dir, "config", "user.name", "hygiene-test");
+  const pkg = {
+    name: "prepare-fixture",
+    version: "1.0.0",
+    scripts: { prepare: "node build.js", test: "vitest run" },
+  };
+  fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify(pkg, null, 2) + "\n");
+  // A real failing build, not a stub assertion about one.
+  fs.writeFileSync(path.join(dir, "build.js"), "process.exit(2);\n");
+  fs.writeFileSync(path.join(dir, "README.md"), "# fixture\n");
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "init");
+  return dir;
+}
+
 beforeAll(() => {
   execFileSync("npm", ["run", "build"], { cwd: ROOT, stdio: "ignore" });
   expect(fs.existsSync(CLI)).toBe(true);
 }, 600_000);
 
-describe("can hygiene --fix", () => {
-  it("refuses to run on a dirty worktree: exit 2, nothing written", () => {
-    const repo = newFixableRepo("dirty");
-    fs.appendFileSync(path.join(repo, "README.md"), "probe\n");
+describe("can hygiene has no auto-fix surface", () => {
+  it("rejects --fix as an unknown flag on exit 2, not the findings gate", () => {
+    const repo = newFixableRepo("unknown-flag");
+    const r = run(["hygiene", repo, "--fix"]);
+    // 2 = usage/environment. 1 would read as "defects found" and 0 as "clean";
+    // either would let a caller believe --fix ran.
+    expect(r.code).toBe(2);
+    expect(r.stderr).toMatch(/hygiene:/);
+    expect(r.stderr).toMatch(/fix/);
+  });
+
+  it("writes nothing when --fix is attempted: no .githooks/, package.json byte-identical", () => {
+    const repo = newFixableRepo("no-writes");
     const before = snapshot(repo);
 
-    const r = run(["hygiene", repo, "--fix"]);
+    run(["hygiene", repo, "--fix"]);
+    run(["hygiene", repo, "--fix", "--min-severity", "high", "--json"]);
 
-    expect(r.code).toBe(2);
     expect(snapshot(repo)).toEqual(before);
     expect(fs.existsSync(path.join(repo, ".githooks"))).toBe(false);
+    // git agrees: no tracked modification, no untracked file.
+    expect(git(repo, "status", "--porcelain", "--untracked-files=all")).toBe("");
   });
 
-  it("applies the low-severity fixers even under --min-severity high", () => {
-    const repo = newFixableRepo("gate-high");
+  it("leaves a failing `prepare` failing — the masked-build-failure damage is unreachable", () => {
+    const repo = newPrepareRepo("prepare-mask");
+    const beforePkg = fs.readFileSync(path.join(repo, "package.json"), "utf8");
 
-    const r = run(["hygiene", repo, "--fix", "--min-severity", "high", "--json"]);
+    // Baseline: the pre-existing prepare really does fail.
+    const baseline = spawnSync("npm", ["run", "prepare"], { cwd: repo, encoding: "utf8" });
+    expect(baseline.status).not.toBe(0);
 
-    const payload = JSON.parse(r.stdout);
-    expect(Array.isArray(payload.fixes)).toBe(true);
-    expect(payload.fixes.length).toBeGreaterThan(0);
-
-    const hook = path.join(repo, ".githooks", "commit-msg");
-    expect(fs.existsSync(hook)).toBe(true);
-    // Executable on disk — a 0644 hook satisfies the detector and does nothing.
-    expect(fs.statSync(hook).mode & 0o111).not.toBe(0);
-
-    const pkg = JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8"));
-    expect(pkg.scripts.prepare).toContain("core.hooksPath .githooks");
-
-    // The hook must accept the very subjects the stated reversal produces,
-    // or `git revert` would be rejected by the artifact it reverts.
-    for (const subject of ['Revert "chore(x): y"', "Merge branch main", "fixup! chore(x): y"]) {
-      const msgFile = path.join(repo, ".commit-msg-probe");
-      fs.writeFileSync(msgFile, subject + "\n");
-      const probe = spawnSync(hook, [msgFile], { encoding: "utf8" });
-      expect(probe.status).toBe(0);
-      fs.unlinkSync(msgFile);
-    }
-  });
-
-  it("clears both fixable rules once the writes are committed", () => {
-    const repo = newFixableRepo("cleared");
     run(["hygiene", repo, "--fix"]);
-    // The rules read TRACKED paths (git ls-files), and --fix deliberately does
-    // not stage. So clearance lands at commit time, not at write time — this
-    // asserts the state the autofix PR actually merges, not an intermediate one.
-    git(repo, "add", "-A");
-    git(repo, "commit", "-q", "-m", "chore(hygiene): apply auto-fixable repo-hygiene remediation");
 
-    const r = run(["hygiene", repo, "--min-severity", "low", "--json"]);
-    const ids = JSON.parse(r.stdout).findings.map((f: any) => f.id);
-    expect(ids.some((i: string) => i.startsWith("no-commit-msg-lint"))).toBe(false);
-    expect(ids.some((i: string) => i.startsWith("no-local-hook-layer"))).toBe(false);
-  });
+    expect(fs.readFileSync(path.join(repo, "package.json"), "utf8")).toBe(beforePkg);
+    // Still fails. The removed fixer's ` && ... || true` append made this 0.
+    const after = spawnSync("npm", ["run", "prepare"], { cwd: repo, encoding: "utf8" });
+    expect(after.status).not.toBe(0);
+  }, 120_000);
 
-  it("still exits 1 when an unfixable finding remains after fixing", () => {
-    const repo = newFixableRepo("unfixable");
-    fs.mkdirSync(path.join(repo, "dist"));
-    fs.writeFileSync(path.join(repo, "dist", "index.js"), "console.log(1);\n");
-    fs.writeFileSync(path.join(repo, "dist", "index.js.map"), "{}\n");
-    git(repo, "add", "-A");
-    git(repo, "commit", "-q", "-m", "track build output");
-
-    const r = run(["hygiene", repo, "--fix", "--min-severity", "high", "--json"]);
-
-    expect(r.code).toBe(1);
-    const payload = JSON.parse(r.stdout);
-    expect(payload.findings.length).toBeGreaterThan(0);
-    // The fixer never touches the unfixable rule: no `git rm`, no deletion.
-    expect(fs.existsSync(path.join(repo, "dist", "index.js"))).toBe(true);
-    // Findings ids are scoped (`tracked-build-artifact:dist/`), so match the rule prefix.
-    expect(
-      payload.findings.some((f: any) => String(f.id).startsWith("tracked-build-artifact"))
-    ).toBe(true);
-  });
-
-  it("emits the documented --fix --json shape", () => {
-    const repo = newFixableRepo("json");
-    const r = run(["hygiene", repo, "--fix", "--json"]);
-    const payload = JSON.parse(r.stdout);
-
-    expect(payload).toHaveProperty("repo");
-    expect(payload).toHaveProperty("scanned_at");
-    expect(Array.isArray(payload.findings)).toBe(true);
-    expect(Array.isArray(payload.skipped)).toBe(true);
-
-    for (const fix of payload.fixes) {
-      expect(typeof fix.id).toBe("string");
-      expect(Array.isArray(fix.rule_ids)).toBe(true);
-      expect(Array.isArray(fix.files_written)).toBe(true);
-      expect(fix.files_written.length).toBeGreaterThan(0);
-      expect(typeof fix.reversal).toBe("string");
-      expect(fix.reversal.length).toBeGreaterThan(0);
-    }
-  });
-
-  it("prints the applied plan and its reversal in text mode", () => {
-    const repo = newFixableRepo("text");
-    const r = run(["hygiene", repo, "--fix"]);
-    expect(r.stdout).toContain("fixed:");
-    expect(r.stdout).toContain(".githooks/commit-msg");
-    // The `undo:` line is the string a human copy-pastes, so assert what
-    // follows it — not merely that the label was printed. Verified by hand to
-    // round-trip a fixed clone back to an empty `git status --porcelain`.
-    const undo = r.stdout.split("\n").find((l) => l.includes("undo:"));
-    expect(undo).toBeDefined();
-    expect(undo).toContain("git checkout -- package.json");
-    expect(undo).toContain("git clean -fd .githooks/");
-    expect(undo).toContain("git config --unset core.hooksPath");
-  });
-
-  it("is idempotent: a second --fix reports no fixes and writes nothing", () => {
-    const repo = newFixableRepo("idempotent");
-    run(["hygiene", repo, "--fix"]);
-    git(repo, "add", "-A");
-    git(repo, "commit", "-q", "-m", "chore(hygiene): apply auto-fixable repo-hygiene remediation");
-
-    const before = snapshot(repo);
-    const r = run(["hygiene", repo, "--fix", "--min-severity", "low", "--json"]);
-
-    expect(JSON.parse(r.stdout).fixes).toEqual([]);
-    expect(snapshot(repo)).toEqual(before);
-    expect(git(repo, "status", "--porcelain").trim()).toBe("");
+  it("does not accept --fix even alongside flags it does accept", () => {
+    const repo = newFixableRepo("combined");
+    const r = run(["hygiene", repo, "--json", "--min-severity", "low", "--fix"]);
+    expect(r.code).toBe(2);
+    expect(r.stdout).toBe("");
   });
 });
 
-describe("can hygiene without --fix", () => {
-  it("is read-only: the fixture is byte-identical afterwards", () => {
-    const repo = newFixableRepo("readonly");
+describe("can hygiene --json is the three-key interchange contract", () => {
+  it("emits exactly { repo, scanned_at, findings } and no fix keys", () => {
+    const repo = newFixableRepo("json-shape");
+    const r = run(["hygiene", repo, "--json"]);
+    // The fixture fires both report-only rules, so the gate fires.
+    expect(r.code).toBe(1);
+    const payload = JSON.parse(r.stdout);
+    expect(Object.keys(payload).sort()).toEqual(["findings", "repo", "scanned_at"]);
+    expect(payload).not.toHaveProperty("fixes");
+    expect(payload).not.toHaveProperty("skipped");
+    expect(Array.isArray(payload.findings)).toBe(true);
+  });
+});
+
+describe("the two formerly-fixable rules remain reported, not silenced", () => {
+  it("no-commit-msg-lint and no-local-hook-layer still fire with remediation hints", () => {
+    const repo = newFixableRepo("still-fires");
+    const r = run(["hygiene", repo, "--min-severity", "low", "--json"]);
+    const findings: Array<{ id: string; remediation_hint?: string }> = JSON.parse(
+      r.stdout,
+    ).findings;
+    const ids = findings.map((f) => f.id);
+    expect(ids).toContain("no-commit-msg-lint");
+    expect(ids).toContain("no-local-hook-layer");
+    // Report-only is only useful if the operator is told what to do by hand.
+    for (const id of ["no-commit-msg-lint", "no-local-hook-layer"]) {
+      const f = findings.find((x) => x.id === id)!;
+      expect(typeof f.remediation_hint).toBe("string");
+      expect(f.remediation_hint!.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("a plain scan is read-only: the fixture is byte-identical afterwards", () => {
+    const repo = newFixableRepo("read-only");
     const before = snapshot(repo);
 
     const r = run(["hygiene", repo, "--min-severity", "low"]);
 
-    expect(r.code).toBe(1); // the fixable rules still fire — nothing was applied
+    expect(r.code).toBe(1); // the report-only rules fire; nothing was applied
     expect(snapshot(repo)).toEqual(before);
-    expect(git(repo, "status", "--porcelain").trim()).toBe("");
-  });
-
-  it("omits fixes/skipped from --json, keeping the gate payload unchanged", () => {
-    const repo = newFixableRepo("json-readonly");
-    const payload = JSON.parse(run(["hygiene", repo, "--json"]).stdout);
-    expect(Object.keys(payload).sort()).toEqual(["findings", "repo", "scanned_at"]);
+    expect(git(repo, "status", "--porcelain", "--untracked-files=all")).toBe("");
   });
 });
