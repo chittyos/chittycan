@@ -141,15 +141,9 @@ export async function capture(
   // A repo with no commits has no HEAD. That is a legitimate state (git init,
   // first files not yet committed) and must not crash the safety path.
   const headSha = await git(root, ["rev-parse", "--short", "HEAD"]).catch(() => "");
-  const id =
-    opts.sessionId ??
-    (headSha.trim() || "root") +
-      "-" +
-      Math.abs(hash(files.join("\n"))).toString(36);
-  const ref = `refs/wip/${id}`;
 
   if (files.length === 0) {
-    return { ref, sha: "", files: [], noop: true, reversal: "" };
+    return { ref: "", sha: "", files: [], noop: true, reversal: "" };
   }
 
   const dir = await mkdtemp(join(tmpdir(), "chitty-capture-"));
@@ -162,6 +156,21 @@ export async function capture(
     await git(root, ["read-tree", "HEAD"], env).catch(() => "");
     await git(root, ["add", "--", ...(opts.paths ?? ["."])], env);
     const tree = (await git(root, ["write-tree"], env)).trim();
+
+    // The ref id is CONTENT-ADDRESSED — derived from the tree, not from the
+    // file list. Hashing filenames was a silent data-loss path: two sessions
+    // editing the SAME files with DIFFERENT content in a shared clone produced
+    // the same id, and the second capture overwrote the first, leaving it
+    // dangling and reachable only until gc. That is the exact scenario this
+    // tool exists for. Verified before the fix: A -> 04314149, B -> c68d21ae,
+    // one ref, A's work gone from it.
+    //
+    // Tree-addressing gets both halves right: identical content collapses to
+    // one ref (a re-capture of unchanged work is genuinely idempotent), and
+    // differing content can never collide.
+    const id =
+      opts.sessionId ?? `${headSha.trim() || "root"}-${tree.slice(0, 12)}`;
+    const ref = `refs/wip/${id}`;
 
     const head = (await git(root, ["rev-parse", "HEAD"]).catch(() => "")).trim();
     const branch = (
@@ -196,15 +205,6 @@ export async function capture(
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
-}
-
-/** Stable, dependency-free string hash for default ref ids. */
-function hash(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  }
-  return h;
 }
 
 export interface WipRef {
