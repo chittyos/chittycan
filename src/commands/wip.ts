@@ -24,6 +24,7 @@ import type { Trigger } from "../lib/hygiene/policy.js";
 import { recordOffered, analyse, emitLearnedPatterns } from "../lib/hygiene/journal.js";
 import { reconcile, formatReconcile } from "../lib/hygiene/reconcile.js";
 import { guarded, readDisabled, reenable, degradedCapture, KILL_SWITCH } from "../lib/hygiene/failsafe.js";
+import { planBranches } from "../lib/hygiene/branches.js";
 
 const TIER_ORDER = ["alarm", "human", "review", "propose", "auto"] as const;
 
@@ -116,7 +117,7 @@ export const describe =
 export function builder(y: Argv): Argv {
   return y
     .positional("action", {
-      choices: ["status", "capture", "list", "restore", "learn", "reenable"] as const,
+      choices: ["status", "capture", "list", "restore", "learn", "reenable", "branches"] as const,
       default: "status",
       describe: "status = facts + decisions; capture = snapshot now",
     })
@@ -130,6 +131,8 @@ export function builder(y: Argv): Argv {
     .option("session", { type: "string", describe: "stable id for re-capture" })
     .option("ref", { type: "string", describe: "restore: which wip ref" })
     .option("branch", { type: "string", describe: "restore: new branch name" })
+    .option("archive-gone", { type: "boolean", default: false, describe: "branches: archive tips that can no longer land" })
+    .option("prune-merged", { type: "boolean", default: false, describe: "branches: archive THEN delete branches holding nothing unique" })
     .strict(false);
 }
 
@@ -137,12 +140,31 @@ export async function handler(
   argv: ArgumentsCamelCase<{
     action: string; path: string; trigger: Trigger;
     json: boolean; session?: string; ref?: string; branch?: string;
+    archiveGone?: boolean; pruneMerged?: boolean;
   }>,
 ): Promise<void> {
   const root = argv.path;
 
   try {
     switch (argv.action) {
+      case "branches": {
+        const facts = await collectWorkflowFacts(root);
+        const plan = await planBranches(root, facts.branches, facts.defaultBranch, {
+          archiveGone: argv.archiveGone,
+          pruneMerged: argv.pruneMerged,
+        });
+        if (argv.json) { console.log(JSON.stringify(plan, null, 2)); break; }
+        if (!plan.actions.length) { console.log("  no merged or unlandable branches"); break; }
+        console.log(plan.dryRun ? "\n  DRY RUN — nothing written. Add --archive-gone or --prune-merged.\n" : "");
+        for (const a of plan.actions) {
+          if (a.refused) { console.log(`  skip     ${a.branch.padEnd(44)} ${a.refused}`); continue; }
+          const what = a.deleted ? "archived+deleted" : a.archivedAs ? "archived" : "would archive";
+          console.log(`  ${what.padEnd(16)} ${a.branch.padEnd(44)} ${a.sha.slice(0, 8)}`);
+        }
+        console.log(`\n  undo: ${plan.reversal}\n`);
+        break;
+      }
+
       case "reenable": {
         await reenable();
         console.log("  failsafe re-enabled. Add the regression test first, if you have not.");

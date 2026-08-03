@@ -83,7 +83,11 @@ function hash(s: string): string {
 export async function snapshotInvariants(root: string): Promise<Invariants> {
   const [head, status, refs, branch] = await Promise.all([
     git(root, ["rev-parse", "HEAD"]),
-    git(root, ["status", "--porcelain", "--untracked-files=normal"]),
+    // `all` is required for correctness here, not tidiness: with `normal` an
+    // untracked directory hashes as one `?? dir/` entry, so a modification to
+    // a file INSIDE it leaves the invariant hash unchanged and the violation
+    // goes undetected. The check would silently stop checking.
+    git(root, ["status", "--porcelain", "--untracked-files=all"]),
     git(root, ["for-each-ref", "--format=%(refname) %(objectname)"]),
     git(root, ["rev-parse", "--abbrev-ref", "HEAD"]),
   ]);
