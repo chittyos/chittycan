@@ -14,16 +14,29 @@ import { join } from "node:path";
 import { planBranches } from "../src/lib/hygiene/branches.js";
 import { collectRemoteBranchFacts } from "../src/lib/hygiene/workflow-facts.js";
 
+/**
+ * Git subprocesses must not read the developer's or runner's ~/.gitconfig.
+ * This repo sets commit.gpgsign=true; inheriting it makes every fixture commit
+ * depend on a signing key being present, so the suite passes here and fails on
+ * a machine without one.
+ */
+const HERMETIC = {
+  ...process.env,
+  HOME: tmpdir(),
+  GIT_CONFIG_GLOBAL: "/dev/null",
+  GIT_CONFIG_SYSTEM: "/dev/null",
+};
+
 const git = (d: string, ...a: string[]) =>
-  execFileSync("git", ["-C", d, ...a], { encoding: "utf8" }).trim();
+  execFileSync("git", ["-C", d, ...a], { encoding: "utf8", env: HERMETIC }).trim();
 
 /** A clone with a real bare origin behind it. Returns both paths. */
 function cloned(): { work: string; origin: string } {
   const origin = mkdtempSync(join(tmpdir(), "hyg-rem-origin-"));
-  execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin]);
+  execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin], { env: HERMETIC });
 
   const seed = mkdtempSync(join(tmpdir(), "hyg-rem-seed-"));
-  execFileSync("git", ["init", "-q", "-b", "main", seed]);
+  execFileSync("git", ["init", "-q", "-b", "main", seed], { env: HERMETIC });
   git(seed, "config", "user.name", "t");
   git(seed, "config", "user.email", "t@t");
   writeFileSync(join(seed, "f.txt"), "v1");
@@ -33,7 +46,7 @@ function cloned(): { work: string; origin: string } {
   git(seed, "push", "-q", "origin", "main");
 
   const work = mkdtempSync(join(tmpdir(), "hyg-rem-work-"));
-  execFileSync("git", ["clone", "-q", origin, work]);
+  execFileSync("git", ["clone", "-q", origin, work], { env: HERMETIC });
   git(work, "config", "user.name", "t");
   git(work, "config", "user.email", "t@t");
   rmSync(seed, { recursive: true, force: true });
@@ -102,9 +115,9 @@ describe("remote branch mode", () => {
     // on a `trunk` repo, branchCredibility returns [], and the scheduled run
     // reports a clean remote having examined no branches at all.
     const origin = mkdtempSync(join(tmpdir(), "hyg-trunk-origin-"));
-    execFileSync("git", ["init", "-q", "--bare", "-b", "trunk", origin]);
+    execFileSync("git", ["init", "-q", "--bare", "-b", "trunk", origin], { env: HERMETIC });
     const seed = mkdtempSync(join(tmpdir(), "hyg-trunk-seed-"));
-    execFileSync("git", ["init", "-q", "-b", "trunk", seed]);
+    execFileSync("git", ["init", "-q", "-b", "trunk", seed], { env: HERMETIC });
     git(seed, "config", "user.name", "t");
     git(seed, "config", "user.email", "t@t");
     writeFileSync(join(seed, "f.txt"), "v1");
@@ -117,7 +130,7 @@ describe("remote branch mode", () => {
 
     // Initialised and fetched rather than cloned — so origin/HEAD is absent.
     const work = mkdtempSync(join(tmpdir(), "hyg-trunk-work-"));
-    execFileSync("git", ["init", "-q", "-b", "trunk", work]);
+    execFileSync("git", ["init", "-q", "-b", "trunk", work], { env: HERMETIC });
     git(work, "remote", "add", "origin", origin);
     git(work, "fetch", "-q", "origin", "+refs/heads/*:refs/remotes/origin/*");
     try {

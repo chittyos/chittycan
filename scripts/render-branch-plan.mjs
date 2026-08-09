@@ -56,8 +56,12 @@ for (const [i, a] of acts.entries()) {
  * needing care inside them is the single quote itself.
  */
 const shq = (s) => `'${String(s).replaceAll("'", `'\\''`)}'`;
+// Classified by ELIGIBILITY, not by whether a write happened. On a dry run
+// nothing has `archivedAs`, and filtering on it emptied every section — a
+// report that read as "no branch qualifies" when the truth was "nothing was
+// written yet".
 const proposed = acts.filter((a) => a.proposedDelete && !a.refused);
-const archived = acts.filter((a) => a.archivedAs && !a.proposedDelete && !a.refused);
+const archived = acts.filter((a) => !a.proposedDelete && !a.refused);
 const refused = acts.filter((a) => a.refused);
 
 const row = (a) =>
@@ -86,7 +90,10 @@ if (proposed.length) {
     "\n```\n\n";
 }
 if (archived.length) {
-  body += "## Archived only (still unlandable, not deleted)\n\n" + table("archived as", archived);
+  body +=
+    (plan.dryRun
+      ? "## Would archive (still unlandable, never deleted)\n\n"
+      : "## Archived only (still unlandable, not deleted)\n\n") + table("archived as", archived);
 }
 if (refused.length) {
   body += "## Left alone\n\n" + table("reason", refused);

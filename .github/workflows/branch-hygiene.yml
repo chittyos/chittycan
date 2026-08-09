@@ -95,8 +95,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TITLE: "Branch hygiene: archived tips and proposed deletions"
         run: |
+          # Close a previously-opened issue rather than leaving it showing a
+          # worklist that no longer exists. An issue nobody can act on is the
+          # fastest way to teach people to ignore this one.
           if [ "$(cat count.txt)" = "0" ]; then
-            echo "Nothing archived and nothing to propose — not opening an issue."
+            stale="$(gh issue list --state open --search "$TITLE in:title" --limit 20 --json number,title \
+              | jq -r --arg t "$TITLE" 'map(select(.title == $t)) | .[0].number // empty')"
+            if [ -n "$stale" ]; then
+              gh issue comment "$stale" --body "Remote is clean — nothing archived and nothing to propose. Closing until the next run finds something."
+              gh issue close "$stale"
+              echo "Closed stale issue #$stale"
+            else
+              echo "Nothing archived and nothing to propose — not opening an issue."
+            fi
             exit 0
           fi
           # `--search` is fuzzy and eventually consistent, so it can return a

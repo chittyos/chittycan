@@ -14,14 +14,27 @@ import { planBranches } from "../src/lib/hygiene/branches.js";
 import { collectRemoteBranchFacts } from "../src/lib/hygiene/workflow-facts.js";
 
 const SCRIPT = join(process.cwd(), "scripts", "render-branch-plan.mjs");
+/**
+ * Git subprocesses must not read the developer's or runner's ~/.gitconfig.
+ * This repo sets commit.gpgsign=true; inheriting it makes every fixture commit
+ * depend on a signing key being present, so the suite passes here and fails on
+ * a machine without one.
+ */
+const HERMETIC = {
+  ...process.env,
+  HOME: tmpdir(),
+  GIT_CONFIG_GLOBAL: "/dev/null",
+  GIT_CONFIG_SYSTEM: "/dev/null",
+};
+
 const git = (d: string, ...a: string[]) =>
-  execFileSync("git", ["-C", d, ...a], { encoding: "utf8" }).trim();
+  execFileSync("git", ["-C", d, ...a], { encoding: "utf8", env: HERMETIC }).trim();
 
 function cloned(): { work: string; origin: string } {
   const origin = mkdtempSync(join(tmpdir(), "rbp-origin-"));
-  execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin]);
+  execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin], { env: HERMETIC });
   const seed = mkdtempSync(join(tmpdir(), "rbp-seed-"));
-  execFileSync("git", ["init", "-q", "-b", "main", seed]);
+  execFileSync("git", ["init", "-q", "-b", "main", seed], { env: HERMETIC });
   git(seed, "config", "user.name", "t");
   git(seed, "config", "user.email", "t@t");
   writeFileSync(join(seed, "f.txt"), "v1");
@@ -32,7 +45,7 @@ function cloned(): { work: string; origin: string } {
   git(seed, "checkout", "-qb", "feat/landed");
   git(seed, "push", "-q", "origin", "feat/landed");
   const work = mkdtempSync(join(tmpdir(), "rbp-work-"));
-  execFileSync("git", ["clone", "-q", origin, work]);
+  execFileSync("git", ["clone", "-q", origin, work], { env: HERMETIC });
   git(work, "config", "user.name", "t");
   git(work, "config", "user.email", "t@t");
   git(work, "fetch", "-q", "--prune", "origin", "+refs/heads/*:refs/remotes/origin/*");
@@ -46,7 +59,7 @@ function render(dir: string, plan: unknown): { body: string; count: string } {
   execFileSync("node", [SCRIPT, "plan.json", "body.md", "count.txt"], {
     cwd: dir,
     encoding: "utf8",
-    env: { ...process.env, RUN_URL: "https://example.invalid/run/1" },
+    env: { ...HERMETIC, RUN_URL: "https://example.invalid/run/1" },
   });
   return {
     body: readFileSync(join(dir, "body.md"), "utf8"),
@@ -86,7 +99,7 @@ describe("render-branch-plan", () => {
       // git accepts `$` and `;` in ref names, so whoever can push a branch
       // chooses this text — and a maintainer is invited to paste it.
       const hostile = "feat/x';id;'";
-      execFileSync("git", ["check-ref-format", "--branch", hostile]); // it really is valid
+      execFileSync("git", ["check-ref-format", "--branch", hostile], { env: HERMETIC }); // it really is valid
       const { body } = render(d, {
         dryRun: false,
         reversal: "x",
@@ -130,7 +143,7 @@ describe("render-branch-plan", () => {
         JSON.stringify({ dryRun: false, reversal: "x", actions: [{ proposedDelete: true }] }),
       );
       expect(() =>
-        execFileSync("node", [SCRIPT, "plan.json", "body.md", "count.txt"], { cwd: d, stdio: "pipe" }),
+        execFileSync("node", [SCRIPT, "plan.json", "body.md", "count.txt"], { cwd: d, stdio: "pipe", env: HERMETIC }),
       ).toThrow();
     } finally {
       rmSync(d, { recursive: true, force: true });
@@ -188,6 +201,7 @@ describe("render-branch-plan", () => {
         execFileSync("node", [SCRIPT, "plan.json", "body.md", "count.txt"], {
           cwd: d,
           stdio: "pipe",
+          env: HERMETIC,
         }),
       ).toThrow();
     } finally {

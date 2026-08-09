@@ -131,7 +131,15 @@ export async function planBranches(
     }
 
     if (dryRun) {
-      actions.push({ branch: b.name, sha, archivedAs: null, deleted: false, refused: null });
+      actions.push({
+        branch: b.name, sha, archivedAs: null, deleted: false,
+        // Carried in dry run too. It marks eligibility, not an action taken —
+        // and a dry run that dropped it rendered a report with no branches in
+        // any section, which reads as "nothing qualifies" rather than
+        // "nothing was written".
+        ...(opts.remote && merged ? { proposedDelete: true } : {}),
+        refused: null,
+      });
       continue;
     }
 
@@ -152,9 +160,17 @@ export async function planBranches(
           });
           continue;
         }
+        // The ls-remote check above is advisory: another client can create the
+        // ref in the gap before this push. An empty lease expectation makes the
+        // guarantee atomic — the push is rejected unless the ref is still
+        // absent on the server, so the check-then-write race cannot silently
+        // clobber someone else's archive.
+        const lease = existing
+          ? `--force-with-lease=${archiveRef}:${existing}`
+          : `--force-with-lease=${archiveRef}:`;
         // Read back from the REMOTE, not from a local ref that a
         // successful-looking push may not have created.
-        await git(root, ["push", "origin", `${sha}:${archiveRef}`]);
+        await git(root, ["push", lease, "origin", `${sha}:${archiveRef}`]);
         const ls = await git(root, ["ls-remote", "origin", archiveRef]);
         readBack = ls.trim().split(/\s+/)[0] ?? "";
       } else {

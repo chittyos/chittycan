@@ -152,6 +152,18 @@ export async function handler(
   try {
     switch (argv.action) {
       case "branches": {
+        // Refuse rather than ignore. `--remote --prune-merged` reads as
+        // "delete the merged branches on origin", and remote mode does not
+        // delete — silently accepting it would let someone believe a cleanup
+        // ran when nothing was removed.
+        if (argv.remote && argv.pruneMerged) {
+          console.error(
+            "  --prune-merged is not available with --remote: remote mode never deletes.\n" +
+              "  Use --archive-gone to archive every eligible tip; deletions are proposed, not executed.",
+          );
+          process.exitCode = 2;
+          break;
+        }
         const { branches, defaultBranch } = argv.remote
           ? await collectRemoteBranchFacts(root)
           : await collectWorkflowFacts(root);
@@ -162,7 +174,13 @@ export async function handler(
         });
         if (argv.json) { console.log(JSON.stringify(plan, null, 2)); break; }
         if (!plan.actions.length) { console.log("  no merged or unlandable branches"); break; }
-        console.log(plan.dryRun ? "\n  DRY RUN — nothing written. Add --archive-gone or --prune-merged.\n" : "");
+        console.log(
+          plan.dryRun
+            ? argv.remote
+              ? "\n  DRY RUN — nothing written. Add --archive-gone to archive on the remote.\n"
+              : "\n  DRY RUN — nothing written. Add --archive-gone or --prune-merged.\n"
+            : "",
+        );
         for (const a of plan.actions) {
           if (a.refused) { console.log(`  skip     ${a.branch.padEnd(44)} ${a.refused}`); continue; }
           const what = a.deleted

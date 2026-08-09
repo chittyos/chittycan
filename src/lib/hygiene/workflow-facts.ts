@@ -160,7 +160,22 @@ async function branchCredibility(
   for (const name of names) {
     const ref = remote ? `origin/${name}` : name;
     const mb = await git(root, ["merge-base", ref, base]);
-    if (mb.code !== 0) continue;
+    if (mb.code !== 0) {
+      // No merge base — unrelated histories, e.g. a branch pushed from a
+      // separately-initialised repo. It can never land as-is, which is the
+      // definition of `gone`. Skipping it silently was the worse option: the
+      // branch is invisible to every report while remaining undeletable by
+      // any tooling that assumes a shared root.
+      const all = await git(root, ["rev-list", "--count", ref]);
+      out.push({
+        name,
+        unique: Number(all.stdout.trim()) || 0,
+        behind: 0,
+        conflicts: 1,
+        checkedOut: checkedOut.has(name),
+      });
+      continue;
+    }
     const counts = await git(root, ["rev-list", "--left-right", "--count", `${base}...${ref}`]);
     const [behindRaw, uniqueRaw] = counts.stdout.trim().split(/\s+/);
     const tree = await git(root, ["merge-tree", mb.stdout.trim(), base, ref]);
