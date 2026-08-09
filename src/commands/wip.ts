@@ -18,7 +18,10 @@
 
 import type { Argv, ArgumentsCamelCase } from "yargs";
 import { capture, listCaptures, restoreCommand } from "../lib/hygiene/capture.js";
-import { collectWorkflowFacts } from "../lib/hygiene/workflow-facts.js";
+import {
+  collectWorkflowFacts,
+  collectRemoteBranchFacts,
+} from "../lib/hygiene/workflow-facts.js";
 import { evaluate, autoExecutable, needsHuman, driftBand } from "../lib/hygiene/policy.js";
 import type { Trigger } from "../lib/hygiene/policy.js";
 import { recordOffered, analyse, emitLearnedPatterns } from "../lib/hygiene/journal.js";
@@ -131,8 +134,9 @@ export function builder(y: Argv): Argv {
     .option("session", { type: "string", describe: "stable id for re-capture" })
     .option("ref", { type: "string", describe: "restore: which wip ref" })
     .option("branch", { type: "string", describe: "restore: new branch name" })
-    .option("archive-gone", { type: "boolean", default: false, describe: "branches: archive tips that can no longer land" })
+    .option("archive-gone", { type: "boolean", default: false, describe: "branches: archive tips that can no longer land (with --remote, also archives merged tips — nothing is deleted)" })
     .option("prune-merged", { type: "boolean", default: false, describe: "branches: archive THEN delete branches holding nothing unique" })
+    .option("remote", { type: "boolean", default: false, describe: "branches: judge origin/* and archive to the remote; never deletes" })
     .strict(false);
 }
 
@@ -140,7 +144,7 @@ export async function handler(
   argv: ArgumentsCamelCase<{
     action: string; path: string; trigger: Trigger;
     json: boolean; session?: string; ref?: string; branch?: string;
-    archiveGone?: boolean; pruneMerged?: boolean;
+    archiveGone?: boolean; pruneMerged?: boolean; remote?: boolean;
   }>,
 ): Promise<void> {
   const root = argv.path;
@@ -148,18 +152,45 @@ export async function handler(
   try {
     switch (argv.action) {
       case "branches": {
-        const facts = await collectWorkflowFacts(root);
-        const plan = await planBranches(root, facts.branches, facts.defaultBranch, {
+        // Refuse rather than ignore. `--remote --prune-merged` reads as
+        // "delete the merged branches on origin", and remote mode does not
+        // delete — silently accepting it would let someone believe a cleanup
+        // ran when nothing was removed.
+        if (argv.remote && argv.pruneMerged) {
+          console.error(
+            "  --prune-merged is not available with --remote: remote mode never deletes.\n" +
+              "  Use --archive-gone to archive every eligible tip; deletions are proposed, not executed.",
+          );
+          process.exitCode = 2;
+          break;
+        }
+        const { branches, defaultBranch } = argv.remote
+          ? await collectRemoteBranchFacts(root)
+          : await collectWorkflowFacts(root);
+        const plan = await planBranches(root, branches, defaultBranch, {
           archiveGone: argv.archiveGone,
           pruneMerged: argv.pruneMerged,
+          remote: argv.remote,
         });
         if (argv.json) { console.log(JSON.stringify(plan, null, 2)); break; }
         if (!plan.actions.length) { console.log("  no merged or unlandable branches"); break; }
-        console.log(plan.dryRun ? "\n  DRY RUN — nothing written. Add --archive-gone or --prune-merged.\n" : "");
+        console.log(
+          plan.dryRun
+            ? argv.remote
+              ? "\n  DRY RUN — nothing written. Add --archive-gone to archive on the remote.\n"
+              : "\n  DRY RUN — nothing written. Add --archive-gone or --prune-merged.\n"
+            : "",
+        );
         for (const a of plan.actions) {
           if (a.refused) { console.log(`  skip     ${a.branch.padEnd(44)} ${a.refused}`); continue; }
-          const what = a.deleted ? "archived+deleted" : a.archivedAs ? "archived" : "would archive";
-          console.log(`  ${what.padEnd(16)} ${a.branch.padEnd(44)} ${a.sha.slice(0, 8)}`);
+          const what = a.deleted
+            ? "archived+deleted"
+            : a.proposedDelete
+              ? "archived (delete proposed)"
+              : a.archivedAs
+                ? "archived"
+                : "would archive";
+          console.log(`  ${what.padEnd(26)} ${a.branch.padEnd(44)} ${a.sha.slice(0, 8)}`);
         }
         console.log(`\n  undo: ${plan.reversal}\n`);
         break;
