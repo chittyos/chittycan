@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs-extra";
 import path from "path";
 import os from "os";
+import { execSync } from "child_process";
 import {
   computeArtifactHash,
   verifyArtifact,
@@ -260,6 +261,28 @@ describe("hash scope — executable content is not excluded", () => {
 
     expect(verifyArtifact(a).status).toBe("ok");
   });
+
+  it("changes when a file's executable bit changes but its bytes do not", () => {
+    const a = makeArtifact("skill-chmod", { "run.sh": "#!/bin/sh\necho hi\n" });
+    const before = computeArtifactHash(a)!.hash;
+
+    fs.chmodSync(path.join(a.standalone.path!, "run.sh"), 0o755);
+
+    expect(computeArtifactHash(a)!.hash).not.toBe(before);
+  });
+});
+
+describe("non-regular root files", () => {
+  it("rejects a FIFO at the artifact root instead of reading (and blocking on) it", () => {
+    const fifoPath = path.join(tmpRoot, "fifo-root");
+    execSync(`mkfifo "${fifoPath}"`);
+
+    const a = makeArtifact("skill-fifo", {});
+    a.standalone.path = fifoPath;
+
+    expect(computeArtifactHash(a)).toBeNull();
+    expect(verifyArtifact(a).status).toBe("missing");
+  });
 });
 
 describe("symlinks", () => {
@@ -437,7 +460,8 @@ async function harness(): Promise<Harness> {
   // HOME is already mutated and would otherwise leak for the rest of the file.
   cleanups.push(() => {
     spy?.mockRestore();
-    process.env.HOME = prevHome;
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
     process.exitCode = undefined;
     fs.removeSync(home);
   });

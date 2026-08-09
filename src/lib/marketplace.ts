@@ -166,6 +166,13 @@ function collectEntries(root: string): HashEntry[] {
     //
     // This is the opposite policy from links found INSIDE the walk, which are
     // hashed by target and never followed — that is what bounds the traversal.
+    //
+    // Reject non-regular files (FIFOs, devices, sockets) the same way the
+    // inner walk already does — reading a FIFO would block forever and a
+    // device such as /dev/zero can exhaust resources.
+    if (!fs.statSync(root).isFile()) {
+      throw new Error(`not a regular file: ${root}`);
+    }
     return [{ rel: path.basename(root), kind: "file", abs: root }];
   }
 
@@ -205,8 +212,9 @@ function updateFramed(digest: crypto.Hash, buf: Buffer): void {
  * also binds shape, so a single-file artifact cannot collide with a directory
  * holding one identically-named file.
  *
- * Returns null when the artifact declares no path or the path does not exist —
- * callers must treat that as unverifiable, never as a pass.
+ * Returns null when the artifact declares no path, the path does not exist,
+ * the root is not a regular file or directory, or traversal/reads fail
+ * partway through — callers must treat that as unverifiable, never as a pass.
  */
 export function computeArtifactHash(
   artifact: MarketplaceArtifact
@@ -225,27 +233,41 @@ export function computeArtifactHash(
     return null;
   }
 
-  const entries = collectEntries(root);
-  const digest = crypto.createHash("sha256");
+  // Traversal and reads can fail mid-walk — a file removed between readdir and
+  // read, a directory that turns unreadable, a root that turns out to be a
+  // FIFO or device. Callers (verifyArtifact, marketVerify's --all batch) must
+  // see that as "this one artifact is unverifiable", not an uncaught throw
+  // that aborts every other artifact in the batch.
+  try {
+    const entries = collectEntries(root);
+    const digest = crypto.createHash("sha256");
 
-  // Bind shape and cardinality so file-vs-directory is part of the identity,
-  // and whether the root itself is a link, so swapping a real dir for a link
-  // (or repointing it) changes the digest even when the contents match.
-  updateFramed(digest, Buffer.from(isDir ? "dir" : "file", "utf8"));
-  updateFramed(digest, Buffer.from(rootIsLink ? "rootlink" : "rootreal", "utf8"));
-  updateFramed(digest, Buffer.from(String(entries.length), "utf8"));
+    // Bind shape and cardinality so file-vs-directory is part of the identity,
+    // and whether the root itself is a link, so swapping a real dir for a link
+    // (or repointing it) changes the digest even when the contents match.
+    updateFramed(digest, Buffer.from(isDir ? "dir" : "file", "utf8"));
+    updateFramed(digest, Buffer.from(rootIsLink ? "rootlink" : "rootreal", "utf8"));
+    updateFramed(digest, Buffer.from(String(entries.length), "utf8"));
 
-  for (const entry of entries) {
-    updateFramed(digest, Buffer.from(entry.rel, "utf8"));
-    updateFramed(digest, Buffer.from(entry.kind, "utf8"));
-    const payload =
-      entry.kind === "symlink"
-        ? Buffer.from(fs.readlinkSync(entry.abs), "utf8")
-        : fs.readFileSync(entry.abs);
-    updateFramed(digest, payload);
+    for (const entry of entries) {
+      updateFramed(digest, Buffer.from(entry.rel, "utf8"));
+      updateFramed(digest, Buffer.from(entry.kind, "utf8"));
+      if (entry.kind === "symlink") {
+        updateFramed(digest, Buffer.from(fs.readlinkSync(entry.abs), "utf8"));
+      } else {
+        // Bind the executable bit: `chmod +x` on a script an agent or hook
+        // can invoke directly is a behavioral change the byte content alone
+        // does not capture.
+        const executable = (fs.statSync(entry.abs).mode & 0o111) !== 0;
+        updateFramed(digest, Buffer.from(executable ? "x" : "-", "utf8"));
+        updateFramed(digest, fs.readFileSync(entry.abs));
+      }
+    }
+
+    return { hash: digest.digest("hex"), fileCount: entries.length };
+  } catch {
+    return null;
   }
-
-  return { hash: digest.digest("hex"), fileCount: entries.length };
 }
 
 export type VerifyStatus = "ok" | "modified" | "unrecorded" | "missing" | "unpathed";
