@@ -196,15 +196,31 @@ export async function collectRemoteBranchFacts(
   ).stdout.trim();
   if (!repoRoot) throw new Error(`not a git repository: ${root}`);
 
-  const headRef = await git(repoRoot, [
-    "rev-parse", "--abbrev-ref", "origin/HEAD",
-  ]);
+  // Ask the REMOTE what its default branch is, rather than reading the local
+  // `origin/HEAD` symref. `actions/checkout` does not create that symref, so in
+  // the scheduled job it is normally absent — and the obvious fallback (assume
+  // `main`, else `master`) is silently wrong on a repo whose default is
+  // `trunk` or `develop`: `origin/<wrong>` fails to resolve, branchCredibility
+  // returns [], and the run reports a clean remote having examined nothing.
+  // That is the precise failure this whole program exists to prevent, so an
+  // unresolvable default is thrown, never guessed.
+  const symref = await git(repoRoot, ["ls-remote", "--symref", "origin", "HEAD"]);
+  const advertised = symref.stdout.match(/^ref:\s+refs\/heads\/(\S+)\s+HEAD$/m)?.[1];
+
+  const local = await git(repoRoot, ["rev-parse", "--abbrev-ref", "origin/HEAD"]);
   const defaultBranch =
-    headRef.code === 0 && headRef.stdout.trim()
-      ? headRef.stdout.trim().replace(/^origin\//, "")
-      : (await git(repoRoot, ["rev-parse", "--verify", "--quiet", "refs/remotes/origin/main"])).code === 0
-        ? "main"
-        : "master";
+    advertised ??
+    (local.code === 0 && local.stdout.trim()
+      ? local.stdout.trim().replace(/^origin\//, "")
+      : undefined);
+
+  if (!defaultBranch) {
+    throw new Error(
+      "cannot determine origin's default branch: `git ls-remote --symref origin HEAD` " +
+        "advertised none and origin/HEAD is not set locally. Refusing to guess — a " +
+        "wrong base makes every branch look unlandable or every branch look clean.",
+    );
+  }
 
   return {
     defaultBranch,

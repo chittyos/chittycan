@@ -68,7 +68,7 @@ describe("render-branch-plan", () => {
 
       expect(count).toBe("1");
       expect(body).toContain("**1** branch holds nothing");
-      expect(body).toContain("git push origin --delete feat/landed");
+      expect(body).toContain("--delete 'feat/landed'");
       // The undo must be the two-step form; the one-step version fails with
       // "src refspec does not match any" because the archive is remote-only.
       expect(body).toContain("fetch origin refs/archive/<name>");
@@ -77,6 +77,63 @@ describe("render-branch-plan", () => {
     } finally {
       rmSync(work, { recursive: true, force: true });
       rmSync(origin, { recursive: true, force: true });
+    }
+  });
+
+  it("shell-quotes branch names, so a hostile ref cannot execute on paste", () => {
+    const d = mkdtempSync(join(tmpdir(), "rbp-inject-"));
+    try {
+      // git accepts `$` and `;` in ref names, so whoever can push a branch
+      // chooses this text — and a maintainer is invited to paste it.
+      const hostile = "feat/x';id;'";
+      execFileSync("git", ["check-ref-format", "--branch", hostile]); // it really is valid
+      const { body } = render(d, {
+        dryRun: false,
+        reversal: "x",
+        actions: [
+          { branch: hostile, sha: "abc12345", archivedAs: `refs/archive/${hostile}`,
+            deleted: false, proposedDelete: true, refused: null },
+        ],
+      });
+      expect(body).toContain(`--delete 'feat/x'\\''`);
+      // The unquoted form is what would have executed.
+      expect(body).not.toContain("--delete feat/x';id;'");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it("leases the delete to the archived sha", () => {
+    const d = mkdtempSync(join(tmpdir(), "rbp-lease-"));
+    try {
+      const { body } = render(d, {
+        dryRun: false,
+        reversal: "x",
+        actions: [
+          { branch: "feat/x", sha: "abc12345", archivedAs: "refs/archive/feat/x",
+            deleted: false, proposedDelete: true, refused: null },
+        ],
+      });
+      // Without the lease, commits pushed after this run — which the archive
+      // does not contain — would be destroyed by the paste.
+      expect(body).toContain("--force-with-lease='feat/x':abc12345");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an action missing its branch instead of rendering `undefined`", () => {
+    const d = mkdtempSync(join(tmpdir(), "rbp-partial-"));
+    try {
+      writeFileSync(
+        join(d, "plan.json"),
+        JSON.stringify({ dryRun: false, reversal: "x", actions: [{ proposedDelete: true }] }),
+      );
+      expect(() =>
+        execFileSync("node", [SCRIPT, "plan.json", "body.md", "count.txt"], { cwd: d, stdio: "pipe" }),
+      ).toThrow();
+    } finally {
+      rmSync(d, { recursive: true, force: true });
     }
   });
 

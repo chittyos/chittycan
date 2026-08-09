@@ -96,6 +96,41 @@ describe("remote branch mode", () => {
     }
   });
 
+  it("resolves a default branch that is neither main nor master", async () => {
+    // The failure this guards: with origin/HEAD unset (which is the normal
+    // state under actions/checkout), a main/master fallback resolves nothing
+    // on a `trunk` repo, branchCredibility returns [], and the scheduled run
+    // reports a clean remote having examined no branches at all.
+    const origin = mkdtempSync(join(tmpdir(), "hyg-trunk-origin-"));
+    execFileSync("git", ["init", "-q", "--bare", "-b", "trunk", origin]);
+    const seed = mkdtempSync(join(tmpdir(), "hyg-trunk-seed-"));
+    execFileSync("git", ["init", "-q", "-b", "trunk", seed]);
+    git(seed, "config", "user.name", "t");
+    git(seed, "config", "user.email", "t@t");
+    writeFileSync(join(seed, "f.txt"), "v1");
+    git(seed, "add", "f.txt");
+    git(seed, "commit", "-qm", "base");
+    git(seed, "remote", "add", "origin", origin);
+    git(seed, "push", "-q", "origin", "trunk");
+    git(seed, "checkout", "-qb", "feat/landed");
+    git(seed, "push", "-q", "origin", "feat/landed");
+
+    // Initialised and fetched rather than cloned — so origin/HEAD is absent.
+    const work = mkdtempSync(join(tmpdir(), "hyg-trunk-work-"));
+    execFileSync("git", ["init", "-q", "-b", "trunk", work]);
+    git(work, "remote", "add", "origin", origin);
+    git(work, "fetch", "-q", "origin", "+refs/heads/*:refs/remotes/origin/*");
+    try {
+      expect(() => git(work, "rev-parse", "--abbrev-ref", "origin/HEAD")).toThrow();
+
+      const facts = await collectRemoteBranchFacts(work);
+      expect(facts.defaultBranch).toBe("trunk");
+      expect(facts.branches.map((b) => b.name)).toEqual(["feat/landed"]);
+    } finally {
+      cleanup(work, origin, seed);
+    }
+  });
+
   it("archives to the remote and never deletes, even for merged branches", async () => {
     const { work, origin } = cloned();
     try {

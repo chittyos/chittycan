@@ -25,7 +25,37 @@ if (!Array.isArray(plan.actions)) {
   process.exit(2);
 }
 
+// Validate every action, not just the array wrapper. An action missing `sha`
+// or `branch` would otherwise render `git push origin --delete undefined` into
+// a command block a maintainer is invited to paste.
 const acts = plan.actions;
+for (const [i, a] of acts.entries()) {
+  const bad =
+    !a || typeof a !== "object"
+      ? "not an object"
+      : typeof a.branch !== "string" || !a.branch
+        ? "missing branch"
+        : typeof a.sha !== "string"
+          ? "missing sha"
+          : a.refused != null && typeof a.refused !== "string"
+            ? "non-string refused"
+            : null;
+  if (bad) {
+    console.error(`plan.actions[${i}]: ${bad} — refusing to render`);
+    process.exit(2);
+  }
+}
+
+/**
+ * POSIX single-quote a branch name for a copy-pasteable shell command.
+ *
+ * git permits `$`, `;`, backticks and newlines in ref names, so an unquoted
+ * `git push origin --delete ${a.branch}` in the issue body is remote code
+ * execution against whoever pastes it: anyone able to push a branch to origin
+ * chooses the text. Single quotes disable every expansion; the only character
+ * needing care inside them is the single quote itself.
+ */
+const shq = (s) => `'${String(s).replaceAll("'", `'\\''`)}'`;
 const proposed = acts.filter((a) => a.proposedDelete && !a.refused);
 const archived = acts.filter((a) => a.archivedAs && !a.proposedDelete && !a.refused);
 const refused = acts.filter((a) => a.refused);
@@ -43,9 +73,16 @@ body +=
 
 if (proposed.length) {
   body += "## Proposed for deletion\n\n" + table("archived as", proposed);
+  // Leased to the archived sha. Between this run and the moment a human pastes
+  // the command, the branch can receive new commits that the archive does not
+  // contain — a bare `--delete` would destroy them and the "nothing is lost"
+  // guarantee with them. With the lease, a moved branch makes the delete fail
+  // instead, and the next run re-archives the newer tip.
   body +=
     "```sh\n" +
-    proposed.map((a) => `git push origin --delete ${a.branch}`).join("\n") +
+    proposed
+      .map((a) => `git push origin --force-with-lease=${shq(a.branch)}:${a.sha} --delete ${shq(a.branch)}`)
+      .join("\n") +
     "\n```\n\n";
 }
 if (archived.length) {
