@@ -1,0 +1,18 @@
+#!/bin/sh
+# Conventional Commits subject check. Installed by `can hygiene --fix`.
+# Undo: restore whatever `git config --show-origin --get core.hooksPath` held before
+#       this was wired. Only `--unset` if it was previously unset — a bare unset
+#       kills a pre-existing husky/lefthook layer instead of restoring it.
+set -eu
+subject="$(sed -n '1p' "$1")"
+case "$subject" in
+  ""|"#"*) exit 0 ;;
+  "Revert \""*) exit 0 ;;
+  "Merge "*|"fixup! "*|"squash! "*) exit 0 ;;
+esac
+if printf '%s' "$subject" | grep -qE '^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+'; then
+  exit 0
+fi
+echo "commit-msg: subject must follow Conventional Commits, e.g. 'fix(scope): description'" >&2
+echo "  got: $subject" >&2
+exit 1

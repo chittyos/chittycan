@@ -15,7 +15,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "prepare": "npm run build",
+    "prepare": "npm run build && { git config core.hooksPath >/dev/null 2>&1 || git config core.hooksPath .githooks 2>/dev/null || true; }",
     "build": "tsc -p . && npm run copy:assets",
     "copy:assets": "node -e \"const fs=require('fs');fs.mkdirSync('dist/zsh',{recursive:true});fs.copyFileSync('src/zsh/snippets.zsh','dist/zsh/snippets.zsh')\"",
     "dev": "tsc -p . --watch",
