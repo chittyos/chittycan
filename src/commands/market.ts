@@ -158,7 +158,16 @@ export async function marketEnable(id: string, opts: { force?: boolean } = {}): 
     // record, so anyone who can strip the hash to force `unrecorded` can just
     // as easily rewrite it to match their payload. Blocking would add friction
     // for every never-recorded artifact while closing neither path. It warns.
-    const blocking = integrity.status === "modified" || integrity.status === "missing";
+    //
+    // `unpathed` blocks only when a contentHash was already recorded: for
+    // agent/hook artifacts, setEnabled()'s toggle falls back to the global
+    // agents/hooks directory when standalone.path is empty, so a baseline
+    // recorded against one path and then cleared would otherwise activate
+    // unverified content from that fallback without ever failing closed.
+    const blocking =
+      integrity.status === "modified" ||
+      integrity.status === "missing" ||
+      (integrity.status === "unpathed" && !!artifact.contentHash);
 
     if (blocking && !opts.force) {
       console.log(chalk.red(`❌ Refusing to enable ${id}: ${integrity.detail}`));

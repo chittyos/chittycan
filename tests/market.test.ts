@@ -725,4 +725,21 @@ describe("marketEnable — integrity gate", () => {
     expect(h.exitCode()).toBeUndefined();
     expect(h.out.join("\n")).not.toContain("Refusing");
   });
+
+  it("refuses to enable an artifact that has a recorded hash but lost its path", async () => {
+    const h = await harness();
+    h.addSkill("skill-a", { "SKILL.md": "x\n" });
+    await h.verify({ id: "skill-a", record: true });
+
+    const manifest = h.readManifest();
+    const artifact = manifest.artifacts.find((a: any) => a.id === "skill-a");
+    expect(artifact.contentHash).toMatch(/^[0-9a-f]{64}$/);
+    artifact.standalone.path = "";
+    fs.writeJsonSync(path.join(h.home, ".config", "chitty", "marketplace.json"), manifest, { spaces: 2 });
+
+    await h.enable("skill-a");
+
+    expect(h.exitCode()).toBe(1);
+    expect(h.out.join("\n")).toContain("Refusing to enable");
+  });
 });
