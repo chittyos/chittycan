@@ -419,6 +419,62 @@ describe("symlinks", () => {
 
     expect(verifyArtifact(a).status).toBe("modified");
   });
+
+  it("detects a symlink ROOT retargeted to different content with an identical hashed shape", () => {
+    // Two directories with identical file trees (same rel, same bytes) hash
+    // identically on their own. Only the root link's own target distinguishes
+    // "artifact points at dirA" from "artifact was repointed at dirB".
+    const dirA = path.join(tmpRoot, "target-a");
+    const dirB = path.join(tmpRoot, "target-b");
+    fs.ensureDirSync(dirA);
+    fs.ensureDirSync(dirB);
+    fs.writeFileSync(path.join(dirA, "SKILL.md"), "same\n", "utf8");
+    fs.writeFileSync(path.join(dirB, "SKILL.md"), "same\n", "utf8");
+
+    const link = path.join(tmpRoot, "root-retarget-link");
+    fs.symlinkSync(dirA, link);
+
+    const a = makeArtifact("skill-rootretarget", { "placeholder.md": "x\n" });
+    a.standalone.path = link;
+    recordArtifactHash(a);
+    expect(verifyArtifact(a).status).toBe("ok");
+
+    fs.unlinkSync(link);
+    fs.symlinkSync(dirB, link);
+
+    expect(verifyArtifact(a).status).toBe("modified");
+  });
+});
+
+describe("directory entries", () => {
+  it("changes when an empty directory is added", () => {
+    const a = makeArtifact("skill-emptydir-add", { "SKILL.md": "x\n" });
+    const before = computeArtifactHash(a)!.hash;
+
+    fs.ensureDirSync(path.join(a.standalone.path!, "empty"));
+
+    expect(computeArtifactHash(a)!.hash).not.toBe(before);
+  });
+
+  it("changes when an empty directory is removed", () => {
+    const a = makeArtifact("skill-emptydir-remove", { "SKILL.md": "x\n" });
+    fs.ensureDirSync(path.join(a.standalone.path!, "empty"));
+    recordArtifactHash(a);
+    expect(verifyArtifact(a).status).toBe("ok");
+
+    fs.removeSync(path.join(a.standalone.path!, "empty"));
+
+    expect(verifyArtifact(a).status).toBe("modified");
+  });
+
+  it("changes when a directory is renamed but its file contents are unchanged", () => {
+    const a = makeArtifact("skill-dirrename", { "sub/inner.md": "x\n" });
+    const before = computeArtifactHash(a)!.hash;
+
+    fs.renameSync(path.join(a.standalone.path!, "sub"), path.join(a.standalone.path!, "renamed"));
+
+    expect(computeArtifactHash(a)!.hash).not.toBe(before);
+  });
 });
 
 describe("recordArtifactHash", () => {

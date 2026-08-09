@@ -140,10 +140,10 @@ export function resolveHome(p: string): string {
  */
 const HASH_IGNORE = new Set([".git", ".DS_Store"]);
 
-/** One entry in the hashed manifest: a file's bytes, or a symlink's target. */
+/** One entry in the hashed manifest: a file's bytes, a symlink's target, or a directory's presence. */
 interface HashEntry {
   rel: string;
-  kind: "file" | "symlink";
+  kind: "file" | "symlink" | "dir";
   abs: string;
 }
 
@@ -186,8 +186,13 @@ function collectEntries(root: string): HashEntry[] {
       // lstat, never stat — following links here is what enables ELOOP.
       const st = fs.lstatSync(abs);
       if (st.isSymbolicLink()) out.push({ rel, kind: "symlink", abs });
-      else if (st.isDirectory()) walk(abs, rel);
-      else if (st.isFile()) out.push({ rel, kind: "file", abs });
+      else if (st.isDirectory()) {
+        // Record the directory itself, not just its eventual file contents:
+        // an empty directory added, removed, or renamed has no files to carry
+        // that change, so without this entry the digest would not move.
+        out.push({ rel, kind: "dir", abs });
+        walk(abs, rel);
+      } else if (st.isFile()) out.push({ rel, kind: "file", abs });
       // Sockets/FIFOs/devices are rejected, not skipped: reading one could
       // block forever, and silently omitting it would leave the digest (and
       // therefore verification) unchanged even though the artifact grew a
@@ -229,11 +234,18 @@ export function computeArtifactHash(
 
   let isDir: boolean;
   let rootIsLink: boolean;
+  let rootLinkTarget = "";
   try {
     // statSync follows the link, so a dangling root throws here and reports as
     // unverifiable rather than silently hashing to a one-entry digest.
     isDir = fs.statSync(root).isDirectory();
     rootIsLink = fs.lstatSync(root).isSymbolicLink();
+    // Bind the link's own target, not just the fact that it is a link: the
+    // "rootlink" marker alone is constant across every symlink root, so
+    // repointing an artifact's root to different content that happens to hash
+    // the same (e.g. two directories with identical file trees) would
+    // otherwise leave the digest unchanged.
+    if (rootIsLink) rootLinkTarget = fs.readlinkSync(root);
   } catch {
     return null;
   }
@@ -252,6 +264,7 @@ export function computeArtifactHash(
     // (or repointing it) changes the digest even when the contents match.
     updateFramed(digest, Buffer.from(isDir ? "dir" : "file", "utf8"));
     updateFramed(digest, Buffer.from(rootIsLink ? "rootlink" : "rootreal", "utf8"));
+    if (rootIsLink) updateFramed(digest, Buffer.from(rootLinkTarget, "utf8"));
     updateFramed(digest, Buffer.from(String(entries.length), "utf8"));
 
     for (const entry of entries) {
@@ -259,7 +272,7 @@ export function computeArtifactHash(
       updateFramed(digest, Buffer.from(entry.kind, "utf8"));
       if (entry.kind === "symlink") {
         updateFramed(digest, Buffer.from(fs.readlinkSync(entry.abs), "utf8"));
-      } else {
+      } else if (entry.kind === "file") {
         // Bind the executable bit: `chmod +x` on a script an agent or hook
         // can invoke directly is a behavioral change the byte content alone
         // does not capture.
@@ -267,9 +280,14 @@ export function computeArtifactHash(
         updateFramed(digest, Buffer.from(executable ? "x" : "-", "utf8"));
         updateFramed(digest, fs.readFileSync(entry.abs));
       }
+      // "dir" entries contribute only rel + kind: their existence and
+      // position in the tree, not any content of their own.
     }
 
-    return { hash: digest.digest("hex"), fileCount: entries.length };
+    // fileCount is user-facing ("N file(s) match recorded hash") — directory
+    // markers count toward the digest's cardinality but are not files.
+    const fileCount = entries.filter((e) => e.kind !== "dir").length;
+    return { hash: digest.digest("hex"), fileCount };
   } catch {
     return null;
   }
