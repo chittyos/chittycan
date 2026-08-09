@@ -188,7 +188,12 @@ function collectEntries(root: string): HashEntry[] {
       if (st.isSymbolicLink()) out.push({ rel, kind: "symlink", abs });
       else if (st.isDirectory()) walk(abs, rel);
       else if (st.isFile()) out.push({ rel, kind: "file", abs });
-      // Sockets/FIFOs/devices are skipped: reading a FIFO would block forever.
+      // Sockets/FIFOs/devices are rejected, not skipped: reading one could
+      // block forever, and silently omitting it would leave the digest (and
+      // therefore verification) unchanged even though the artifact grew a
+      // new node. Thrown here, caught by computeArtifactHash's try/catch,
+      // reported as unverifiable — same fail-closed policy as the root case.
+      else throw new Error(`unreadable entry (not a file, directory, or symlink): ${abs}`);
     }
   };
   walk(root, "");

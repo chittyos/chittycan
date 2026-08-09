@@ -283,6 +283,18 @@ describe("non-regular root files", () => {
     expect(computeArtifactHash(a)).toBeNull();
     expect(verifyArtifact(a).status).toBe("missing");
   });
+
+  it("rejects a FIFO added inside an already-recorded directory artifact", () => {
+    const a = makeArtifact("skill-interior-fifo", { "SKILL.md": "x\n" });
+    recordArtifactHash(a);
+    expect(verifyArtifact(a).status).toBe("ok");
+
+    execSync(`mkfifo "${path.join(a.standalone.path!, "pipe")}"`);
+
+    // Silently skipping the FIFO would leave the digest unchanged and report
+    // "ok" even though the artifact's contents grew a new, unsafe-to-read node.
+    expect(verifyArtifact(a).status).toBe("missing");
+  });
 });
 
 describe("symlinks", () => {
@@ -366,9 +378,16 @@ describe("symlinks", () => {
   });
 
   it("distinguishes a real file from a symlink to identical bytes", () => {
-    const realFile = path.join(tmpRoot, "real.md");
+    // Real file and symlink share a basename but live in separate directories,
+    // so `entry.rel` is identical for both — any hash difference must come
+    // from the rootIsLink binding, not from the two paths hashing different rel.
+    const realDir = path.join(tmpRoot, "real-root");
+    const linkDir = path.join(tmpRoot, "link-root");
+    fs.ensureDirSync(realDir);
+    fs.ensureDirSync(linkDir);
+    const realFile = path.join(realDir, "agent.md");
     fs.writeFileSync(realFile, "same\n", "utf8");
-    const linkFile = path.join(tmpRoot, "real.md.link");
+    const linkFile = path.join(linkDir, "agent.md");
     fs.symlinkSync(realFile, linkFile);
 
     const direct = makeArtifact("agent-direct", { "x.md": "x\n" });
@@ -376,7 +395,6 @@ describe("symlinks", () => {
     const viaLink = makeArtifact("agent-vialink", { "x.md": "x\n" });
     viaLink.standalone.path = linkFile;
 
-    // Same bytes, same basename would collide without the rootIsLink binding.
     expect(computeArtifactHash(direct)!.hash).not.toBe(computeArtifactHash(viaLink)!.hash);
   });
 
