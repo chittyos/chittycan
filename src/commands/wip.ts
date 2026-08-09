@@ -134,7 +134,7 @@ export function builder(y: Argv): Argv {
     .option("session", { type: "string", describe: "stable id for re-capture" })
     .option("ref", { type: "string", describe: "restore: which wip ref" })
     .option("branch", { type: "string", describe: "restore: new branch name" })
-    .option("archive-gone", { type: "boolean", default: false, describe: "branches: archive tips that can no longer land" })
+    .option("archive-gone", { type: "boolean", default: false, describe: "branches: archive tips that can no longer land (with --remote, also archives merged tips — nothing is deleted)" })
     .option("prune-merged", { type: "boolean", default: false, describe: "branches: archive THEN delete branches holding nothing unique" })
     .option("remote", { type: "boolean", default: false, describe: "branches: judge origin/* and archive to the remote; never deletes" })
     .strict(false);
