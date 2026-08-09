@@ -100,7 +100,17 @@ async function orphanedWipRefs(root: string, currentSession?: string): Promise<s
 
 
 /**
- * Judge every local branch as a merge proposal.
+ * Which set of branches to judge.
+ *
+ * `local` is what a developer sees in `git branch`. `remote` is what the
+ * scheduled fleet job sees: a fresh `actions/checkout` has exactly one local
+ * branch, so a cron that judged local refs would always report "nothing to do"
+ * while the remote accumulated hundreds of dead branches.
+ */
+export type BranchScope = "local" | "remote";
+
+/**
+ * Judge every branch in scope as a merge proposal.
  *
  * `merge-tree` is used rather than an actual trial merge: it computes the
  * result in memory and touches neither the index nor the working tree, so this
@@ -109,29 +119,51 @@ async function orphanedWipRefs(root: string, currentSession?: string): Promise<s
 async function branchCredibility(
   root: string,
   defaultBranch: string,
+  scope: BranchScope = "local",
 ): Promise<BranchCredibility[]> {
   const base = `origin/${defaultBranch}`;
   if ((await git(root, ["rev-parse", "--verify", "--quiet", base])).code !== 0) {
     return [];
   }
-  const listed = await git(root, ["for-each-ref", "--format=%(refname:short)", "refs/heads/"]);
-  const checkedOut = new Set(
-    (await git(root, ["worktree", "list", "--porcelain"])).stdout
-      .split("\n")
-      .filter((l) => l.startsWith("branch "))
-      .map((l) => l.replace("branch refs/heads/", "").trim()),
-  );
+  const remote = scope === "remote";
+  const listed = await git(root, [
+    "for-each-ref",
+    "--format=%(refname:short)",
+    remote ? "refs/remotes/origin/" : "refs/heads/",
+  ]);
+  // A remote-tracking ref is never checked out by definition, so the worktree
+  // scan is skipped rather than run and ignored — in a fresh Actions checkout
+  // it would report only the default branch anyway.
+  const checkedOut = remote
+    ? new Set<string>()
+    : new Set(
+        (await git(root, ["worktree", "list", "--porcelain"])).stdout
+          .split("\n")
+          .filter((l) => l.startsWith("branch "))
+          .map((l) => l.replace("branch refs/heads/", "").trim()),
+      );
 
-  const names = listed.stdout.split("\n").map((n) => n.trim())
-    .filter((n) => n && n !== defaultBranch);
+  const names = listed.stdout
+    .split("\n")
+    .map((n) => n.trim())
+    // for-each-ref on refs/remotes/origin/ yields `origin/<name>`; the rest of
+    // the pipeline names branches without the remote, so strip it here and
+    // resolve back to `origin/<name>` only when touching git.
+    // `refs/remotes/origin/HEAD` shortens to `origin`, NOT `origin/HEAD`, so it
+    // survives the prefix strip as the empty string and must be dropped before
+    // it becomes a branch named "origin" that resolves to nothing.
+    .filter((n) => !remote || n !== "origin")
+    .map((n) => (remote && n.startsWith("origin/") ? n.slice("origin/".length) : n))
+    .filter((n) => n && n !== defaultBranch && n !== "HEAD");
 
   const out: BranchCredibility[] = [];
   for (const name of names) {
-    const mb = await git(root, ["merge-base", name, base]);
+    const ref = remote ? `origin/${name}` : name;
+    const mb = await git(root, ["merge-base", ref, base]);
     if (mb.code !== 0) continue;
-    const counts = await git(root, ["rev-list", "--left-right", "--count", `${base}...${name}`]);
+    const counts = await git(root, ["rev-list", "--left-right", "--count", `${base}...${ref}`]);
     const [behindRaw, uniqueRaw] = counts.stdout.trim().split(/\s+/);
-    const tree = await git(root, ["merge-tree", mb.stdout.trim(), base, name]);
+    const tree = await git(root, ["merge-tree", mb.stdout.trim(), base, ref]);
     const conflicts = (tree.stdout.match(/^<<<<<<< /gm) ?? []).length;
     out.push({
       name,
@@ -147,6 +179,37 @@ async function branchCredibility(
 export interface CollectOptions {
   /** Current session id, so its own capture is not reported as orphaned. */
   sessionId?: string;
+}
+
+/**
+ * Judge the branches on `origin` rather than the ones checked out locally.
+ *
+ * Split out from `collectWorkflowFacts` because the scheduled job needs only
+ * this one field: collecting the rest (status, wip refs, in-progress state)
+ * describes a CI runner's throwaway working tree, which is never interesting.
+ */
+export async function collectRemoteBranchFacts(
+  root: string,
+): Promise<{ defaultBranch: string; branches: BranchCredibility[] }> {
+  const repoRoot = (
+    await git(root, ["rev-parse", "--show-toplevel"])
+  ).stdout.trim();
+  if (!repoRoot) throw new Error(`not a git repository: ${root}`);
+
+  const headRef = await git(repoRoot, [
+    "rev-parse", "--abbrev-ref", "origin/HEAD",
+  ]);
+  const defaultBranch =
+    headRef.code === 0 && headRef.stdout.trim()
+      ? headRef.stdout.trim().replace(/^origin\//, "")
+      : (await git(repoRoot, ["rev-parse", "--verify", "--quiet", "refs/remotes/origin/main"])).code === 0
+        ? "main"
+        : "master";
+
+  return {
+    defaultBranch,
+    branches: await branchCredibility(repoRoot, defaultBranch, "remote"),
+  };
 }
 
 /**

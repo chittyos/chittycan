@@ -11,6 +11,11 @@
  *   a branch is only ever deleted AFTER its tip is written to refs/archive/
  *   and that ref has been read back and confirmed to hold the same sha.
  *
+ * The same invariant holds in `remote` mode, with the archive written to and
+ * read back from `origin`. Remote mode additionally refuses to delete at all:
+ * it is the mode the scheduled job runs in, so it does the reversible half
+ * (archive) unattended and reports the irreversible half as a proposal.
+ *
  * Archiving is a pure ref write. Every commit stays permanently reachable via
  * `git log refs/archive/<name>`, while the branch leaves `git branch` and PR
  * flows — where a stale branch reads as a pending decision it can no longer
@@ -38,6 +43,12 @@ export interface BranchAction {
   sha: string;
   archivedAs: string | null;
   deleted: boolean;
+  /**
+   * Remote mode only. The branch qualifies for deletion and its tip is safely
+   * archived, but nothing was deleted — a human decides. Never set in local
+   * mode, where `--prune-merged` deletes under a human who typed it.
+   */
+  proposedDelete?: boolean;
   /** Populated when the branch was deliberately left alone. */
   refused: string | null;
 }
@@ -55,6 +66,13 @@ export interface BranchOptions {
   pruneMerged?: boolean;
   /** Default. Nothing is written. */
   dryRun?: boolean;
+  /**
+   * Operate on `origin/<name>` and archive to `refs/archive/<name>` ON THE
+   * REMOTE. Deletion is unconditionally refused in this mode: it is the mode
+   * a cron runs in, and unattended deletion of a remote branch is the one
+   * operation in this file whose blast radius is not local to one machine.
+   */
+  remote?: boolean;
 }
 
 /**
@@ -89,8 +107,14 @@ export async function planBranches(
     const merged = b.unique === 0;
     const gone = b.conflicts > 0 || b.behind >= 150;
     if (!merged && !gone) continue;
-    if (merged && !opts.pruneMerged && !dryRun) continue;
-    if (gone && !merged && !opts.archiveGone && !dryRun) continue;
+    // Remote mode archives both bands under one flag. Archiving is a pure ref
+    // write there too, and the flag that would otherwise gate the merged band
+    // (`--prune-merged`) means "delete" — which remote mode never does.
+    const archiveBoth = Boolean(opts.remote) && !dryRun;
+    if (!archiveBoth) {
+      if (merged && !opts.pruneMerged && !dryRun) continue;
+      if (gone && !merged && !opts.archiveGone && !dryRun) continue;
+    }
 
     const why = refusal(b, defaultBranch);
     if (why) {
@@ -100,7 +124,7 @@ export async function planBranches(
 
     let sha = "";
     try {
-      sha = (await git(root, ["rev-parse", b.name])).trim();
+      sha = (await git(root, ["rev-parse", opts.remote ? `origin/${b.name}` : b.name])).trim();
     } catch {
       actions.push({ branch: b.name, sha: "", archivedAs: null, deleted: false, refused: "unresolvable ref" });
       continue;
@@ -112,12 +136,42 @@ export async function planBranches(
     }
 
     const archiveRef = `refs/archive/${b.name}`;
-    await git(root, ["update-ref", archiveRef, sha]);
+    let readBack = "";
+    try {
+      if (opts.remote) {
+        // Check BEFORE pushing. git only enforces fast-forward on refs/heads/*
+        // and refs/tags/*; a plain push to refs/archive/* silently overwrites,
+        // which would destroy a previously archived tip — the exact loss this
+        // whole module exists to prevent. Verified by test, not assumed.
+        const existing = (await git(root, ["ls-remote", "origin", archiveRef]))
+          .trim().split(/\s+/)[0] ?? "";
+        if (existing && existing !== sha) {
+          actions.push({
+            branch: b.name, sha, archivedAs: null, deleted: false,
+            refused: `archive ref already holds ${existing.slice(0, 8)} — refusing to overwrite`,
+          });
+          continue;
+        }
+        // Read back from the REMOTE, not from a local ref that a
+        // successful-looking push may not have created.
+        await git(root, ["push", "origin", `${sha}:${archiveRef}`]);
+        const ls = await git(root, ["ls-remote", "origin", archiveRef]);
+        readBack = ls.trim().split(/\s+/)[0] ?? "";
+      } else {
+        await git(root, ["update-ref", archiveRef, sha]);
+        readBack = (await git(root, ["rev-parse", archiveRef])).trim();
+      }
+    } catch (e) {
+      actions.push({
+        branch: b.name, sha, archivedAs: null, deleted: false,
+        refused: `archive failed: ${(e as Error).message.split("\n")[0]}`,
+      });
+      continue;
+    }
 
     // Read back before trusting it. An archive that did not land turns the
     // subsequent delete from safe into destructive, and this is the only
     // place that distinction is enforced.
-    const readBack = (await git(root, ["rev-parse", archiveRef]).catch(() => "")).trim();
     if (readBack !== sha) {
       actions.push({
         branch: b.name, sha, archivedAs: null, deleted: false,
@@ -127,20 +181,36 @@ export async function planBranches(
     }
 
     let deleted = false;
-    if (merged && opts.pruneMerged) {
+    if (merged && opts.pruneMerged && !opts.remote) {
       // -d, never -D: it refuses anything not fully merged, which is a second
       // independent check on the classification.
       await git(root, ["branch", "-d", b.name]);
       deleted = true;
     }
 
-    actions.push({ branch: b.name, sha, archivedAs: archiveRef, deleted, refused: null });
+    actions.push({
+      branch: b.name,
+      sha,
+      archivedAs: archiveRef,
+      deleted,
+      // Archived and eligible, but this mode never deletes. Surfacing it as a
+      // proposal is the whole point: the cron does the reversible half and
+      // leaves the irreversible half to a human.
+      ...(opts.remote && merged ? { proposedDelete: true } : {}),
+      refused: null,
+    });
   }
 
   return {
     actions,
     dryRun,
-    reversal:
-      `git -C ${root} branch <name> refs/archive/<name>   # restores any branch, tip intact`,
+    reversal: opts.remote
+      // Two steps, not one: the archive ref exists only on the remote, and a
+      // push refspec resolves its source LOCALLY. The one-step form fails with
+      // "src refspec does not match any" — a reversal command that does not
+      // run is the same as no reversal at all.
+      ? `git -C ${root} fetch origin refs/archive/<name>:refs/archive/<name> && ` +
+        `git -C ${root} push origin refs/archive/<name>:refs/heads/<name>   # restores any branch on the remote, tip intact`
+      : `git -C ${root} branch <name> refs/archive/<name>   # restores any branch, tip intact`,
   };
 }

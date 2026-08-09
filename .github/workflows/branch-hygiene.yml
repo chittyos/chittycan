@@ -1,0 +1,154 @@
+# Scheduled branch hygiene — archive unattended, propose deletions.
+#
+# The split is deliberate and is the whole safety argument for running this on
+# a cron with no human present:
+#
+#   ARCHIVE (unattended)  pushes refs/archive/<name> at the branch tip. A pure
+#                         ref write. Nothing is removed, and every archived tip
+#                         stays permanently reachable and restorable.
+#   DELETE  (proposed)    written into a single tracking issue. Never executed
+#                         here. Deleting a remote branch is the one operation
+#                         in this program whose blast radius is not local to a
+#                         machine, and the classification that drives it has
+#                         had real precision bugs before.
+#
+# `can wip branches --remote` refuses to delete regardless of flags, so this
+# workflow cannot become destructive by editing a flag in this file.
+name: Branch hygiene
+
+on:
+  schedule:
+    # Mondays 08:00 UTC. Weekly, so the issue is a start-of-week worklist
+    # rather than background noise that trains everyone to close it unread.
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Report only — do not write archive refs"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # push refs/archive/*
+  issues: write # upsert the proposal issue
+
+concurrency:
+  group: branch-hygiene
+  cancel-in-progress: false
+
+jobs:
+  branch-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Every branch is judged against the default branch, so shallow
+          # history makes `unique`/`behind` counts meaningless rather than
+          # merely slower.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      # Preflight, matching reusable-governance-gates.yml: an unregistered
+      # subcommand otherwise falls through to yargs and exits 0, which would
+      # read as "no branches to clean" forever.
+      - name: Verify `wip` is registered
+        run: |
+          if ! node dist/index.js --help 2>/dev/null | grep -qE '(^|[[:space:]])wip([[:space:]]|$)'; then
+            echo "WIP_COMMAND_MISSING: \`can wip\` is not registered in dist/index.js."
+            echo "Branch hygiene cannot run. This is a build/wiring failure, not a clean remote."
+            exit 1
+          fi
+
+      - name: Fetch every remote branch
+        run: git fetch --prune origin "+refs/heads/*:refs/remotes/origin/*"
+
+      - name: Plan and archive
+        id: plan
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -o pipefail
+          if [ "$DRY_RUN" = "true" ]; then
+            node dist/index.js wip branches . --remote --json > plan.json
+          else
+            node dist/index.js wip branches . --remote --archive-gone --json > plan.json
+          fi
+          cat plan.json
+
+      - name: Render the proposal
+        id: render
+        run: |
+          node --input-type=module -e '
+            import { readFileSync, writeFileSync } from "node:fs";
+            const plan = JSON.parse(readFileSync("plan.json", "utf8"));
+            const acts = plan.actions ?? [];
+            const proposed = acts.filter((a) => a.proposedDelete);
+            const archived = acts.filter((a) => a.archivedAs && !a.proposedDelete);
+            const refused = acts.filter((a) => a.refused);
+            // Dry-run actions carry no archivedAs, no proposedDelete, and no
+            // refusal. Without their own bucket they match nothing, the body
+            // renders empty, and the run reports success having said nothing.
+            const would = acts.filter((a) => !a.refused && !a.archivedAs && !a.proposedDelete);
+
+            const rows = (xs) =>
+              xs.map((a) => `| \`${a.branch}\` | \`${a.sha.slice(0, 8)}\` | ${a.refused ?? a.archivedAs ?? "—"} |`).join("\n");
+
+            let body = "";
+            if (plan.dryRun) body += "> Dry run — no archive refs were written.\n\n";
+            if (would.length) {
+              body += `**${would.length}** branches would be archived.\n\n`;
+              body += "## Would archive\n\n| branch | tip | archived as |\n|---|---|---|\n" + rows(would) + "\n\n";
+            } else {
+              body += `**${proposed.length}** branches hold nothing the default branch does not already have. `;
+              body += "Their tips are archived; deleting them is reversible.\n\n";
+            }
+            if (proposed.length) {
+              body += "## Proposed for deletion\n\n| branch | tip | archived as |\n|---|---|---|\n" + rows(proposed) + "\n\n";
+              body += "```sh\n" + proposed.map((a) => `git push origin --delete ${a.branch}`).join("\n") + "\n```\n\n";
+            }
+            if (archived.length) {
+              body += "## Archived only (still unlandable, not deleted)\n\n| branch | tip | archived as |\n|---|---|---|\n" + rows(archived) + "\n\n";
+            }
+            if (refused.length) {
+              body += "## Left alone\n\n| branch | tip | reason |\n|---|---|---|\n" + rows(refused) + "\n\n";
+            }
+            body += `**Undo any of this:**\n\n\`\`\`sh\n${plan.reversal}\n\`\`\`\n`;
+            body += `\n<sub>Generated by \`.github/workflows/branch-hygiene.yml\` — run ${process.env.RUN_URL}</sub>\n`;
+
+            writeFileSync("body.md", body);
+            writeFileSync("count.txt", String(acts.filter((a) => !a.refused).length));
+          '
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      # One issue, reopened and rewritten each run. A new issue per week turns a
+      # worklist into a backlog of stale duplicates.
+      - name: Upsert the tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: "Branch hygiene: archived tips and proposed deletions"
+        run: |
+          if [ "$(cat count.txt)" = "0" ]; then
+            echo "Nothing archived and nothing to propose — not opening an issue."
+            exit 0
+          fi
+          # `--search` is fuzzy and eventually consistent, so it can return a
+          # loosely-related issue. Select on exact title equality, or a rename
+          # elsewhere in the repo silently redirects this body onto it.
+          # gh's own --jq takes no --arg, so the filter runs through jq proper.
+          existing="$(gh issue list --state all --search "$TITLE in:title" --limit 20 --json number,title \
+            | jq -r --arg t "$TITLE" 'map(select(.title == $t)) | .[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file body.md
+            gh issue reopen "$existing" 2>/dev/null || true
+            echo "Updated issue #$existing"
+          else
+            gh issue create --title "$TITLE" --body-file body.md
+          fi
