@@ -126,6 +126,21 @@ export function resolveHome(p: string): string {
   return p.startsWith("~/") ? path.join(os.homedir(), p.slice(2)) : p;
 }
 
+/**
+ * Inverse of `resolveHome`: rewrite a path under the current user's home
+ * directory back to its portable `~/...` form. Used when a symlink target
+ * is bound into a content hash — the raw absolute target is machine-specific
+ * (different homedir per install), so a hash recorded on one machine and
+ * synced to another via the shared marketplace repo would otherwise never
+ * match even when the artifact's content is identical.
+ */
+function toPortableTarget(target: string): string {
+  const home = os.homedir();
+  return target === home || target.startsWith(home + path.sep)
+    ? "~" + target.slice(home.length)
+    : target;
+}
+
 // ---------------------------------------------------------------------------
 // Content hashing / verification
 // ---------------------------------------------------------------------------
@@ -280,8 +295,11 @@ export function computeArtifactHash(
     // "rootlink" marker alone is constant across every symlink root, so
     // repointing an artifact's root to different content that happens to hash
     // the same (e.g. two directories with identical file trees) would
-    // otherwise leave the digest unchanged.
-    if (rootIsLink) rootLinkTarget = fs.readlinkSync(root);
+    // otherwise leave the digest unchanged. Normalized to `~/...` when the
+    // target falls under the home directory so the digest stays portable
+    // across machines with different homedirs but the same relative layout
+    // (see toPortableTarget).
+    if (rootIsLink) rootLinkTarget = toPortableTarget(fs.readlinkSync(root));
   } catch {
     return null;
   }

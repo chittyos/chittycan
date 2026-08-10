@@ -400,6 +400,42 @@ describe("symlinks", () => {
     expect(computeArtifactHash(direct)!.hash).not.toBe(computeArtifactHash(viaLink)!.hash);
   });
 
+  it("normalizes a root symlink target under $HOME so the hash is portable across machines", () => {
+    // A root symlink's target is bound into the digest so a link swap is
+    // caught (see the "identical content" test above). But the raw absolute
+    // target is machine-specific: recording a hash on one install and syncing
+    // it via the shared marketplace repo to another install with a different
+    // homedir must not spuriously report `modified` when the artifact's
+    // content and its path *relative to $HOME* are identical.
+    const prevHome = process.env.HOME;
+    try {
+      const homeA = fs.mkdtempSync(path.join(os.tmpdir(), "chittymarket-homeA-"));
+      process.env.HOME = homeA;
+      const storeA = path.join(homeA, "dev", "skill-store");
+      fs.ensureDirSync(storeA);
+      fs.writeFileSync(path.join(storeA, "SKILL.md"), "trusted\n", "utf8");
+      const linkA = path.join(tmpRoot, "portable-link-a");
+      fs.symlinkSync(storeA, linkA);
+      const artifactA = makeArtifact("skill-portable", { "placeholder.md": "x\n" });
+      artifactA.standalone.path = linkA;
+      const hashA = computeArtifactHash(artifactA)!.hash;
+
+      const homeB = fs.mkdtempSync(path.join(os.tmpdir(), "chittymarket-homeB-"));
+      process.env.HOME = homeB;
+      const storeB = path.join(homeB, "dev", "skill-store");
+      fs.ensureDirSync(storeB);
+      fs.writeFileSync(path.join(storeB, "SKILL.md"), "trusted\n", "utf8");
+      const linkB = path.join(tmpRoot, "portable-link-b");
+      fs.symlinkSync(storeB, linkB);
+      const artifactB = { ...artifactA, standalone: { ...artifactA.standalone, path: linkB } };
+      const hashB = computeArtifactHash(artifactB)!.hash;
+
+      expect(hashA).toBe(hashB);
+    } finally {
+      process.env.HOME = prevHome;
+    }
+  });
+
   it("reports a dangling symlink root as missing, not as a one-entry pass", () => {
     const a = makeArtifact("skill-danglingroot", { "SKILL.md": "x\n" });
     const linkPath = path.join(tmpRoot, "dangling-root");
