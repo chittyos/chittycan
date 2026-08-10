@@ -15,7 +15,9 @@ import {
   verifyArtifact,
   verifyPassed,
   recordArtifactHash,
+  mergeArtifactsIntoRepo,
   type MarketplaceArtifact,
+  type Marketplace,
 } from "../src/lib/marketplace";
 
 let tmpRoot: string;
@@ -741,5 +743,89 @@ describe("marketEnable — integrity gate", () => {
 
     expect(h.exitCode()).toBe(1);
     expect(h.out.join("\n")).toContain("Refusing to enable");
+  });
+});
+
+describe("computeArtifactHash — large files are hashed in bounded chunks", () => {
+  it("changes when a byte inside the first chunk changes", () => {
+    const a = makeArtifact("skill-large", { "BIG.bin": "a".repeat(200_000) });
+    const before = computeArtifactHash(a)!.hash;
+    const filePath = path.join(a.standalone.path!, "BIG.bin");
+    const buf = fs.readFileSync(filePath);
+    buf[10] = buf[10] === 0x61 ? 0x62 : 0x61;
+    fs.writeFileSync(filePath, buf);
+    expect(computeArtifactHash(a)!.hash).not.toBe(before);
+  });
+
+  it("changes when a byte well past the first 64KiB chunk changes", () => {
+    const a = makeArtifact("skill-large2", { "BIG.bin": "b".repeat(200_000) });
+    const before = computeArtifactHash(a)!.hash;
+    const filePath = path.join(a.standalone.path!, "BIG.bin");
+    const buf = fs.readFileSync(filePath);
+    const idx = 100_000;
+    buf[idx] = buf[idx] === 0x62 ? 0x63 : 0x62;
+    fs.writeFileSync(filePath, buf);
+    expect(computeArtifactHash(a)!.hash).not.toBe(before);
+  });
+
+  it("round-trips through record/verify for a multi-chunk file, and detects a later append", () => {
+    const a = makeArtifact("skill-large3", { "BIG.bin": "c".repeat(150_000) });
+    recordArtifactHash(a);
+    expect(verifyArtifact(a).status).toBe("ok");
+
+    fs.appendFileSync(path.join(a.standalone.path!, "BIG.bin"), "x");
+    expect(verifyArtifact(a).status).toBe("modified");
+  });
+});
+
+describe("mergeArtifactsIntoRepo — push propagates hash updates", () => {
+  function repoWith(artifacts: MarketplaceArtifact[]): Marketplace {
+    return { version: "1.0.0", lastSync: "", artifacts };
+  }
+
+  it("appends an artifact that doesn't exist in the repo yet", () => {
+    const repo = repoWith([]);
+    const a = makeArtifact("skill-new", { "SKILL.md": "x\n" });
+
+    const result = mergeArtifactsIntoRepo([a], repo);
+
+    expect(result).toEqual({ pushed: 1, updated: 0 });
+    expect(repo.artifacts).toHaveLength(1);
+  });
+
+  it("does not duplicate or touch an existing artifact whose hash already matches", () => {
+    const repoArtifact = makeArtifact("skill-x", { "SKILL.md": "x\n" });
+    repoArtifact.contentHash = "abc123";
+    const repo = repoWith([repoArtifact]);
+    const runtimeArtifact = { ...repoArtifact, contentHash: "abc123" };
+
+    const result = mergeArtifactsIntoRepo([runtimeArtifact], repo);
+
+    expect(result).toEqual({ pushed: 0, updated: 0 });
+    expect(repo.artifacts).toHaveLength(1);
+  });
+
+  it("propagates a re-recorded hash to an artifact that already exists in the repo", () => {
+    const repoArtifact = makeArtifact("skill-x", { "SKILL.md": "x\n" });
+    repoArtifact.contentHash = "stale-hash";
+    const repo = repoWith([repoArtifact]);
+    const runtimeArtifact = { ...repoArtifact, contentHash: "fresh-hash" };
+
+    const result = mergeArtifactsIntoRepo([runtimeArtifact], repo);
+
+    expect(result).toEqual({ pushed: 0, updated: 1 });
+    expect((repo.artifacts[0] as MarketplaceArtifact).contentHash).toBe("fresh-hash");
+  });
+
+  it("does not clobber the repo's contentHash when the runtime copy has none recorded", () => {
+    const repoArtifact = makeArtifact("skill-x", { "SKILL.md": "x\n" });
+    repoArtifact.contentHash = "trusted-hash";
+    const repo = repoWith([repoArtifact]);
+    const runtimeArtifact = { ...repoArtifact, contentHash: undefined };
+
+    const result = mergeArtifactsIntoRepo([runtimeArtifact], repo);
+
+    expect(result).toEqual({ pushed: 0, updated: 0 });
+    expect((repo.artifacts[0] as MarketplaceArtifact).contentHash).toBe("trusted-hash");
   });
 });

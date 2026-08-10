@@ -213,6 +213,42 @@ function updateFramed(digest: crypto.Hash, buf: Buffer): void {
   digest.update(buf);
 }
 
+/** Bytes read per chunk when framing a file's content — bounds peak memory
+ *  regardless of file size, so one huge artifact can't exhaust the heap or
+ *  hit Node's max Buffer size the way a single `readFileSync` would. */
+const HASH_CHUNK_SIZE = 64 * 1024;
+
+/**
+ * Same framing as `updateFramed`, but reads `filePath` incrementally instead
+ * of buffering it whole. `size` (from a prior `statSync`) is framed as the
+ * length up front; if fewer or more bytes are actually read — the file was
+ * truncated or grown mid-hash — that mismatch throws, which the caller's
+ * try/catch turns into "unverifiable" rather than a digest over a byte count
+ * that doesn't match what was framed.
+ */
+function updateFramedFile(digest: crypto.Hash, filePath: string, size: number): void {
+  const len = Buffer.alloc(8);
+  len.writeBigUInt64BE(BigInt(size));
+  digest.update(len);
+
+  const fd = fs.openSync(filePath, "r");
+  try {
+    const chunk = Buffer.alloc(HASH_CHUNK_SIZE);
+    let total = 0;
+    for (;;) {
+      const bytesRead = fs.readSync(fd, chunk, 0, HASH_CHUNK_SIZE, null);
+      if (bytesRead === 0) break;
+      digest.update(bytesRead === HASH_CHUNK_SIZE ? chunk : chunk.subarray(0, bytesRead));
+      total += bytesRead;
+    }
+    if (total !== size) {
+      throw new Error(`size changed while hashing: ${filePath} (expected ${size}, read ${total})`);
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 /**
  * SHA-256 over an artifact's on-disk content.
  *
@@ -276,9 +312,10 @@ export function computeArtifactHash(
         // Bind the executable bit: `chmod +x` on a script an agent or hook
         // can invoke directly is a behavioral change the byte content alone
         // does not capture.
-        const executable = (fs.statSync(entry.abs).mode & 0o111) !== 0;
+        const st = fs.statSync(entry.abs);
+        const executable = (st.mode & 0o111) !== 0;
         updateFramed(digest, Buffer.from(executable ? "x" : "-", "utf8"));
-        updateFramed(digest, fs.readFileSync(entry.abs));
+        updateFramedFile(digest, entry.abs, st.size);
       }
       // "dir" entries contribute only rel + kind: their existence and
       // position in the tree, not any content of their own.
@@ -545,38 +582,67 @@ export function syncWithRepo(): { fromRepo: number; fromRuntime: number } {
   return { fromRepo, fromRuntime: 0 };
 }
 
-/** Push new runtime entries → repo marketplace.json and commit. */
-export function pushToRepo(message?: string): { pushed: number; committed: boolean; error?: string } {
+/**
+ * Merge `runtimeArtifacts` into `repo` in place: new ids are appended, and an
+ * existing id whose runtime `contentHash` differs from the repo's gets that
+ * hash updated. Pure (no I/O) so it can be tested without touching the real
+ * runtime/repo paths — `pushToRepo` is the thin fs wrapper around this.
+ *
+ * Only `contentHash` is reconciled for existing entries, not the whole
+ * record: the repo is canonical for everything else an artifact declares
+ * (name, category, tags, …), and blindly overwriting that with a local copy
+ * would let a stale or edited local record clobber it.
+ */
+export function mergeArtifactsIntoRepo(
+  runtimeArtifacts: MarketplaceArtifact[],
+  repo: Marketplace
+): { pushed: number; updated: number } {
+  const repoById = new Map(realArtifacts(repo).map((a) => [a.id, a] as const));
+
+  let pushed = 0;
+  let updated = 0;
+  for (const a of runtimeArtifacts) {
+    const existing = repoById.get(a.id);
+    if (!existing) {
+      repo.artifacts.push(a);
+      repoById.set(a.id, a);
+      pushed++;
+    } else if (a.contentHash && a.contentHash !== existing.contentHash) {
+      existing.contentHash = a.contentHash;
+      updated++;
+    }
+  }
+  return { pushed, updated };
+}
+
+/** Push new runtime entries → repo marketplace.json, propagate updated content
+ *  hashes for entries that already exist there, and commit. */
+export function pushToRepo(
+  message?: string
+): { pushed: number; updated: number; committed: boolean; error?: string } {
   if (!fs.existsSync(REPO_MARKETPLACE)) {
-    return { pushed: 0, committed: false, error: `Repo not found: ${REPO_MARKETPLACE}` };
+    return { pushed: 0, updated: 0, committed: false, error: `Repo not found: ${REPO_MARKETPLACE}` };
   }
 
   const runtime = loadMarketplace();
   const repo = fs.readJsonSync(REPO_MARKETPLACE) as Marketplace;
-  const repoIds = new Set(realArtifacts(repo).map((a) => a.id));
+  const { pushed, updated } = mergeArtifactsIntoRepo(realArtifacts(runtime), repo);
 
-  let pushed = 0;
-  for (const a of realArtifacts(runtime)) {
-    if (!repoIds.has(a.id)) {
-      repo.artifacts.push(a);
-      repoIds.add(a.id);
-      pushed++;
-    }
-  }
-
-  if (pushed === 0) return { pushed: 0, committed: false };
+  if (pushed === 0 && updated === 0) return { pushed: 0, updated: 0, committed: false };
 
   repo.lastSync = new Date().toISOString();
   fs.writeJsonSync(REPO_MARKETPLACE, repo, { spaces: 2 });
 
   const repoDir = path.dirname(REPO_MARKETPLACE);
-  const commitMsg = message ?? `feat(market): register ${pushed} artifact(s) via can market push`;
+  const commitMsg =
+    message ??
+    `feat(market): register ${pushed} artifact(s), update ${updated} hash(es) via can market push`;
 
   try {
     execSync(`git -C "${repoDir}" add marketplace.json`, { stdio: "pipe" });
     execSync(`git -C "${repoDir}" commit -m "${commitMsg}"`, { stdio: "pipe" });
-    return { pushed, committed: true };
+    return { pushed, updated, committed: true };
   } catch (e) {
-    return { pushed, committed: false, error: String(e) };
+    return { pushed, updated, committed: false, error: String(e) };
   }
 }

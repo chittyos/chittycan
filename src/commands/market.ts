@@ -416,20 +416,25 @@ export async function marketPush(message?: string): Promise<void> {
 
   const result = pushToRepo(message);
 
-  if (result.error && result.pushed === 0) {
+  if (result.error && result.pushed === 0 && result.updated === 0) {
     console.log(chalk.red(`❌ ${result.error}`));
     return;
   }
 
-  if (result.pushed === 0) {
+  if (result.pushed === 0 && result.updated === 0) {
     console.log(chalk.green("✅ Repo already up to date. Nothing to push."));
     return;
   }
 
+  const summary = [
+    result.pushed > 0 ? `${result.pushed} new artifact(s)` : null,
+    result.updated > 0 ? `${result.updated} updated hash(es)` : null,
+  ].filter(Boolean).join(", ");
+
   if (result.committed) {
-    console.log(chalk.green(`✅ Pushed ${result.pushed} new artifact(s) and committed to chittymarket repo.`));
+    console.log(chalk.green(`✅ Pushed ${summary} and committed to chittymarket repo.`));
   } else {
-    console.log(chalk.yellow(`⚠️  Wrote ${result.pushed} artifact(s) to repo marketplace.json but git commit failed.`));
+    console.log(chalk.yellow(`⚠️  Wrote ${summary} to repo marketplace.json but git commit failed.`));
     if (result.error) console.log(chalk.dim(`   ${result.error}`));
     console.log(chalk.dim(`   Manually commit: cd ${path.dirname(REPO_MARKETPLACE)} && git add marketplace.json && git commit`));
   }
