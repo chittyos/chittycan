@@ -1,6 +1,6 @@
 {
   "name": "chittycan",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "ChittyCan CLI and infrastructure interface — AI gateway, ecosystem tooling, DNA ownership",
   "type": "module",
   "bin": {

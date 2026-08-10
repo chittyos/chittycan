@@ -5,6 +5,18 @@ All notable changes to ChittyCan will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-08-10
+
+### Fixed
+
+- `can --version` reported `unknown` from every installed copy. `yargs.version()`
+  with no argument searches the filesystem upward from the entry script, and the
+  installed entry script is the `node_modules/.bin/can` symlink. The version is
+  now read from this module's own location and passed explicitly. Only a run
+  from the source tree ever answered correctly, which is why it went unnoticed —
+  and a CLI distributed across a fleet that cannot say which version it is
+  cannot be managed.
+
 ## [0.6.0] - 2026-08-10
 
 ### Added — Repo hygiene program

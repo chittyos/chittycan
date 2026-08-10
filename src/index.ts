@@ -9,6 +9,9 @@ import * as hygieneModule from "./commands/hygiene.js";
 
 import yargs from "yargs";
 import chalk from "chalk";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { trackCommandUsage } from "./lib/usage-tracker.js";
 import { hideBin } from "yargs/helpers";
 import { configMenu } from "./commands/config.js";
@@ -74,6 +77,31 @@ import {
   synthesizeAnalyzeCommand,
   synthesizePatternsCommand
 } from "./commands/learning.js";
+
+/**
+ * Resolved from this module's own location, never inferred.
+ *
+ * `yargs.version()` with no argument searches upward from the entry script. The
+ * installed entry point is the `.bin/can` SYMLINK, so the search starts in
+ * `node_modules/.bin/` and reaches the consumer's package.json — or nothing —
+ * before it ever sees ours. Every installed copy therefore reported `unknown`,
+ * while a run from the source tree reported the right number, which is why this
+ * survived: the only environment that answered correctly was the one nobody
+ * ships. A fleet CLI that cannot say which version it is cannot be managed.
+ */
+const CLI_VERSION: string = (() => {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    // dist/index.js -> package.json is one level up. Read it rather than
+    // importing, so no JSON-module assertion or resolver behaviour is involved.
+    return (
+      JSON.parse(readFileSync(join(here, "..", "package.json"), "utf8")).version ??
+      "unknown"
+    );
+  } catch {
+    return "unknown";
+  }
+})();
 
 // Load plugins early
 const config = (await import("./lib/config.js")).loadConfig();
@@ -1221,6 +1249,6 @@ yargs(args)
   .strict()
   .help()
   .alias("h", "help")
-  .version()
+  .version(CLI_VERSION)
   .alias("v", "version")
   .parse();
