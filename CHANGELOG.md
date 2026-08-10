@@ -5,6 +5,39 @@ All notable changes to ChittyCan will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-08-10
+
+### Added — Repo hygiene program
+
+- `can hygiene [path]` — six-rule repo hygiene detector (tracked build artifacts,
+  unignored output dirs, non-failing CI gates, missing local hook layer, missing
+  commit-message lint, deployed-without-source). `--min-severity` gates the exit
+  code so it can be used as a hard CI gate; `--json` for machine consumption.
+- `can hygiene --fix` — applies the auto-fixable rules (commit-msg hook,
+  hook-layer wiring) and reports exactly what it changed. Low-severity fixers run
+  even under `--min-severity high`, so a gate at `high` still gets its fixes.
+- `can wip branches --remote` — judges `origin/*` rather than local branches, for
+  use from CI where the checkout has only the default branch. Archives eligible
+  tips to `refs/archive/<name>` on the remote and **never deletes**: deletions are
+  reported as proposals. The default branch is read from
+  `ls-remote --symref origin HEAD` and an unresolvable default throws rather than
+  being guessed as `main`/`master`.
+- `.github/workflows/branch-hygiene.yml` — weekly scheduled cleanup that archives
+  unattended and files deletions as a single upserted tracking issue, closing it
+  when the remote goes clean.
+- `.github/workflows/hygiene-autofix.yml` — dispatch-only autofix that opens a PR.
+
+### Security
+
+- Branch names are POSIX-quoted in generated shell commands. git permits `$`, `;`,
+  backticks and quotes in ref names, so an unquoted branch name in a pasteable
+  command block was remote code execution against whoever pasted it.
+- Proposed deletions are leased to the archived sha (`--force-with-lease`), so a
+  branch that received commits after being archived cannot be destroyed by a
+  stale proposal.
+- Archive writes carry an explicit lease, closing a check-then-write race that
+  could silently overwrite a previously archived tip.
+
 ## [0.5.0] - Upcoming (Q1 2025)
 
 ### Added - 🏛️ Foundation Governance & DNA Ownership
