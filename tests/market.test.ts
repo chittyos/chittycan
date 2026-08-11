@@ -218,6 +218,26 @@ describe("setEnabled — hash stays valid across the disable/enable round trip",
     expect(fs.existsSync(path.join(a.standalone.path!, "SKILL.md"))).toBe(true);
     expect(verifyArtifact(a).status).toBe("ok");
   });
+
+  it("does not launder already-drifted content into a new trusted baseline on toggle", () => {
+    const a = makeArtifact("skill-drifted-toggle", { "SKILL.md": "trusted\n" });
+    recordArtifactHash(a);
+    const recordedHash = a.contentHash;
+
+    // Tamper with the content directly on disk, bypassing the tool — this is
+    // what verifyArtifact's "modified" status exists to catch.
+    fs.writeFileSync(path.join(a.standalone.path!, "SKILL.md"), "tampered\n", "utf8");
+    expect(verifyArtifact(a).status).toBe("modified");
+
+    const data: Marketplace = { version: "1.0.0", lastSync: "", artifacts: [a] };
+    setEnabled(data, a.id, false);
+
+    // The toggle's own rename (SKILL.md -> SKILL.md.disabled) must not
+    // re-record over the already-tampered content: the recorded hash should
+    // stay exactly what it was, and verification should still fail closed.
+    expect(a.contentHash).toBe(recordedHash);
+    expect(verifyArtifact(a).status).toBe("modified");
+  });
 });
 
 describe("hash framing — forged field boundaries", () => {

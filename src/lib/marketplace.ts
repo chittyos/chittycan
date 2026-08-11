@@ -659,6 +659,16 @@ export function setEnabled(
   const artifact = findArtifact(data, id);
   if (!artifact) return { ok: false, reason: `${id} not found` };
 
+  // Snapshot whether the artifact still matched its recorded baseline BEFORE
+  // this toggle's own authorized content change (see the re-record comment
+  // below) — needed to tell "this toggle's own edit" apart from "content had
+  // already drifted before the toggle ran".
+  const rebaselinable =
+    artifact.type === "skill" || artifact.type === "agent" || artifact.type === "hook";
+  const preToggleMatchedRecorded =
+    rebaselinable && !!artifact.contentHash &&
+    computeArtifactHash(artifact)?.hash === artifact.contentHash;
+
   // Apply type-specific side effects
   switch (artifact.type) {
     case "skill":
@@ -691,10 +701,13 @@ export function setEnabled(
   // sees. That's an authorized, in-tool change, not tampering, so re-record
   // over an existing baseline rather than leaving it to age into a false
   // "modified" that the next `enable` would then refuse without --force.
-  if (
-    artifact.contentHash &&
-    (artifact.type === "skill" || artifact.type === "agent" || artifact.type === "hook")
-  ) {
+  //
+  // But only when the content still matched its recorded baseline right
+  // before this toggle ran: if it had already drifted, re-recording here
+  // would silently launder that drift into a new trusted baseline — which
+  // the next `verify`/`market push` would then propagate — even though the
+  // user never ran `verify --record --force`.
+  if (rebaselinable && preToggleMatchedRecorded) {
     const computed = computeArtifactHash(artifact);
     if (computed) artifact.contentHash = computed.hash;
   }
