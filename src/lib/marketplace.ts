@@ -253,20 +253,31 @@ function updateFramed(digest: crypto.Hash, buf: Buffer): void {
 const HASH_CHUNK_SIZE = 64 * 1024;
 
 /**
- * Same framing as `updateFramed`, but reads `filePath` incrementally instead
- * of buffering it whole. `size` (from a prior `statSync`) is framed as the
- * length up front; if fewer or more bytes are actually read — the file was
- * truncated or grown mid-hash — that mismatch throws, which the caller's
- * try/catch turns into "unverifiable" rather than a digest over a byte count
- * that doesn't match what was framed.
+ * Frame a file entry's executable bit and bytes into `digest`, in that order
+ * — matching the field order every other entry kind uses. Opens `filePath`
+ * once and stats the descriptor (`fstatSync`) rather than `statSync`-ing the
+ * path and opening it separately: there is no path-based operation between
+ * the check and the read for a swap to land in. Reads incrementally instead
+ * of buffering the whole file. If fewer or more bytes are actually read than
+ * the fd reported — the file was truncated or grown mid-hash — that mismatch
+ * throws, which the caller's try/catch turns into "unverifiable" rather than
+ * a digest over a byte count that doesn't match what was framed.
  */
-function updateFramedFile(digest: crypto.Hash, filePath: string, size: number): void {
-  const len = Buffer.alloc(8);
-  len.writeBigUInt64BE(BigInt(size));
-  digest.update(len);
-
+function updateFramedFile(digest: crypto.Hash, filePath: string): void {
   const fd = fs.openSync(filePath, "r");
   try {
+    const st = fs.fstatSync(fd);
+    const size = st.size;
+    const executable = (st.mode & 0o111) !== 0;
+    // Bind the executable bit: `chmod +x` on a script an agent or hook can
+    // invoke directly is a behavioral change the byte content alone does
+    // not capture.
+    updateFramed(digest, Buffer.from(executable ? "x" : "-", "utf8"));
+
+    const len = Buffer.alloc(8);
+    len.writeBigUInt64BE(BigInt(size));
+    digest.update(len);
+
     const chunk = Buffer.alloc(HASH_CHUNK_SIZE);
     let total = 0;
     for (;;) {
@@ -346,13 +357,7 @@ export function computeArtifactHash(
       if (entry.kind === "symlink") {
         updateFramed(digest, Buffer.from(fs.readlinkSync(entry.abs), "utf8"));
       } else if (entry.kind === "file") {
-        // Bind the executable bit: `chmod +x` on a script an agent or hook
-        // can invoke directly is a behavioral change the byte content alone
-        // does not capture.
-        const st = fs.statSync(entry.abs);
-        const executable = (st.mode & 0o111) !== 0;
-        updateFramed(digest, Buffer.from(executable ? "x" : "-", "utf8"));
-        updateFramedFile(digest, entry.abs, st.size);
+        updateFramedFile(digest, entry.abs);
       }
       // "dir" entries contribute only rel + kind: their existence and
       // position in the tree, not any content of their own.

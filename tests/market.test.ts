@@ -433,7 +433,8 @@ describe("symlinks", () => {
 
       expect(hashA).toBe(hashB);
     } finally {
-      process.env.HOME = prevHome;
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
     }
   });
 
