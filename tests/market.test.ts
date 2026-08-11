@@ -17,6 +17,7 @@ import {
   recordArtifactHash,
   mergeArtifactsIntoRepo,
   normalizeArtifactPath,
+  resolveHome,
   type MarketplaceArtifact,
   type Marketplace,
 } from "../src/lib/marketplace";
@@ -966,6 +967,17 @@ describe("normalizeArtifactPath", () => {
     const resolved = path.resolve(raw);
     expect(normalizeArtifactPath(raw)).toBe(resolved);
     expect(normalizeArtifactPath(raw)).not.toBe("~/../shared/skill");
+  });
+
+  it("round-trips through resolveHome when the artifact path is exactly HOME", () => {
+    // A path landing exactly on HOME (target.slice(home.length) === "") must
+    // still come out as "~/", not the bare "~" that resolveHome's "~/" prefix
+    // check does not recognize — otherwise the portable form silently fails
+    // to resolve back to a real path on the next load.
+    const home = os.homedir();
+    const portable = normalizeArtifactPath(home);
+    expect(portable).toBe("~/");
+    expect(resolveHome(portable)).toBe(home);
   });
 });
 

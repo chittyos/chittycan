@@ -137,7 +137,13 @@ export function resolveHome(p: string): string {
 function toPortableTarget(target: string): string {
   const home = os.homedir();
   if (target === home || target.startsWith(home + path.sep)) {
-    return "~" + target.slice(home.length);
+    // Always emit a forward-slash "~/..." form — `resolveHome` only ever
+    // recognizes that prefix. Left as `target.slice(home.length)` verbatim,
+    // this would (a) come out as bare "~" with no slash when target === home
+    // exactly, and (b) carry `path.sep`-joined segments, which is "\\" on
+    // Windows — neither of which `resolveHome` decodes back to a real path.
+    const rel = target.slice(home.length).split(path.sep).join("/");
+    return "~/" + rel.replace(/^\//, "");
   }
   // A symlink target is arbitrary text, not a validated path — nothing stops
   // it from already starting with a literal "~" (which the OS does NOT
