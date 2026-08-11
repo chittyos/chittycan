@@ -27,7 +27,6 @@ import {
   normalizeArtifactPath,
   verifyArtifact,
   verifyPassed,
-  recordArtifactHash,
   type VerifyResult,
   RUNTIME_MARKETPLACE,
   REPO_MARKETPLACE,
@@ -328,15 +327,22 @@ export async function marketVerify(opts: {
   }
 
   if (opts.record) {
+    // Hash every target exactly once and reuse that result for both the
+    // laundering check below and the recording loop further down. Hashing
+    // separately for each — verify first, then recordArtifactHash() again
+    // per target — leaves a window between the two passes (widest for
+    // --all, which verifies every target before recording any) where content
+    // changed after the check could be adopted as the trusted baseline
+    // without ever having been checked itself.
+    const preflight = targets.map((artifact) => ({ artifact, result: verifyArtifact(artifact) }));
+
     // Re-recording an artifact that currently fails verification would silently
     // adopt tampered content as trusted. Require --force to say so out loud.
-    const laundering = targets
-      .map(verifyArtifact)
-      .filter((r) => r.status === "modified");
+    const laundering = preflight.filter(({ result }) => result.status === "modified");
 
     if (laundering.length > 0 && !opts.force) {
       console.log(chalk.red(`❌ Refusing to re-record ${laundering.length} artifact(s) that currently fail verification:\n`));
-      for (const r of laundering) {
+      for (const { result: r } of laundering) {
         console.log(`  ${r.id.padEnd(38)} ${chalk.red("MODIFIED")}`);
         console.log(chalk.dim(`    recorded: sha256:${r.expected}`));
         console.log(chalk.dim(`    on disk:  sha256:${r.actual}`));
@@ -347,15 +353,15 @@ export async function marketVerify(opts: {
     }
 
     let recorded = 0;
-    for (const artifact of targets) {
-      const result = recordArtifactHash(artifact);
-      if (result.ok) {
-        recorded++;
-        console.log(chalk.green(`✅ Recorded ${artifact.id}`) + chalk.dim(` sha256:${result.hash.slice(0, 16)}…`));
-      } else {
-        console.log(chalk.red(`❌ ${result.reason}`));
+    for (const { artifact, result } of preflight) {
+      if (!result.actual) {
+        console.log(chalk.red(`❌ cannot hash ${artifact.id}: path missing or undeclared`));
         process.exitCode = 1;
+        continue;
       }
+      artifact.contentHash = result.actual;
+      recorded++;
+      console.log(chalk.green(`✅ Recorded ${artifact.id}`) + chalk.dim(` sha256:${result.actual.slice(0, 16)}…`));
     }
     if (recorded > 0) saveMarketplace(data);
     console.log(chalk.dim(`\n   Recorded ${recorded}/${targets.length} baseline hash(es).\n`));
