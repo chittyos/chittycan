@@ -18,6 +18,7 @@ import {
   mergeArtifactsIntoRepo,
   normalizeArtifactPath,
   resolveHome,
+  setEnabled,
   type MarketplaceArtifact,
   type Marketplace,
 } from "../src/lib/marketplace";
@@ -196,6 +197,26 @@ describe("verifyArtifact — fails closed", () => {
       expect(verifyPassed(verifyArtifact(a))).toBe(false);
     }
     expect(verifyPassed(verifyArtifact(clean))).toBe(true);
+  });
+});
+
+describe("setEnabled — hash stays valid across the disable/enable round trip", () => {
+  it("keeps a recorded hash trusted after disabling and re-enabling a skill", () => {
+    const a = makeArtifact("skill-toggle", { "SKILL.md": "trusted\n" });
+    recordArtifactHash(a);
+    expect(verifyArtifact(a).status).toBe("ok");
+
+    const data: Marketplace = { version: "1.0.0", lastSync: "", artifacts: [a] };
+
+    setEnabled(data, a.id, false);
+    expect(fs.existsSync(path.join(a.standalone.path!, "SKILL.md.disabled"))).toBe(true);
+    // Without re-recording, this reports "modified" (the entry is now named
+    // SKILL.md.disabled, not SKILL.md) even though nothing was tampered with.
+    expect(verifyArtifact(a).status).toBe("ok");
+
+    setEnabled(data, a.id, true);
+    expect(fs.existsSync(path.join(a.standalone.path!, "SKILL.md"))).toBe(true);
+    expect(verifyArtifact(a).status).toBe("ok");
   });
 });
 
@@ -978,6 +999,20 @@ describe("normalizeArtifactPath", () => {
     const resolved = path.resolve(home, "..", "shared", "skill");
     expect(normalizeArtifactPath("~/../shared/skill")).toBe(resolved);
     expect(normalizeArtifactPath("~/../shared/skill")).not.toBe("~/../shared/skill");
+  });
+
+  it("recognizes a path under home despite a case difference, on Windows only", () => {
+    // Windows paths are case-insensitive; a target resolved with different
+    // case than os.homedir() is still "under home" there. POSIX stays exact.
+    const prevPlatform = process.platform;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    try {
+      const home = os.homedir();
+      const differentlyCased = path.join(home.toUpperCase(), "skills", "foo");
+      expect(normalizeArtifactPath(differentlyCased)).toBe("~/skills/foo");
+    } finally {
+      Object.defineProperty(process, "platform", { value: prevPlatform });
+    }
   });
 
   it("round-trips through resolveHome when the artifact path is exactly HOME", () => {

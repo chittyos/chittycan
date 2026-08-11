@@ -136,7 +136,18 @@ export function resolveHome(p: string): string {
  */
 function toPortableTarget(target: string): string {
   const home = os.homedir();
-  if (target === home || target.startsWith(home + path.sep)) {
+  // Windows paths are case-insensitive, so os.homedir()'s case need not match
+  // the case a caller resolved the target with (e.g. a differently-cased
+  // drive letter or username segment). Comparing case-sensitively there would
+  // miss a target that IS under home, storing/hashing it as a raw
+  // machine-specific absolute path instead of the portable "~/..." form.
+  // POSIX paths are case-sensitive, so this must stay exact everywhere else.
+  const underHome =
+    process.platform === "win32"
+      ? target.toLowerCase() === home.toLowerCase() ||
+        target.toLowerCase().startsWith((home + path.sep).toLowerCase())
+      : target === home || target.startsWith(home + path.sep);
+  if (underHome) {
     // Always emit a forward-slash "~/..." form — `resolveHome` only ever
     // recognizes that prefix. Left as `target.slice(home.length)` verbatim,
     // this would (a) come out as bare "~" with no slash when target === home
@@ -293,8 +304,12 @@ const HASH_CHUNK_SIZE = 64 * 1024;
  * once and stats the descriptor (`fstatSync`) rather than `statSync`-ing the
  * path and opening it separately: there is no path-based operation between
  * the check and the read for a swap to land in. Reads incrementally instead
- * of buffering the whole file. If fewer or more bytes are actually read than
- * the fd reported — the file was truncated or grown mid-hash — that mismatch
+ * of buffering the whole file, bounded by the size `fstat` just reported —
+ * not by waiting for EOF — so a file being appended to as fast as it is read
+ * (e.g. a pipe-like writer racing this call) cannot keep this loop running
+ * indefinitely. A single follow-up read past that many bytes still catches
+ * genuine growth. If fewer or more bytes are actually read than the fd
+ * reported — the file was truncated or grown mid-hash — that mismatch
  * throws, which the caller's try/catch turns into "unverifiable" rather than
  * a digest over a byte count that doesn't match what was framed.
  *
@@ -338,11 +353,18 @@ function updateFramedFile(digest: crypto.Hash, filePath: string, followSymlink: 
 
     const chunk = Buffer.alloc(HASH_CHUNK_SIZE);
     let total = 0;
-    for (;;) {
-      const bytesRead = fs.readSync(fd, chunk, 0, HASH_CHUNK_SIZE, null);
+    while (total < size) {
+      const toRead = Math.min(HASH_CHUNK_SIZE, size - total);
+      const bytesRead = fs.readSync(fd, chunk, 0, toRead, null);
       if (bytesRead === 0) break;
       digest.update(bytesRead === HASH_CHUNK_SIZE ? chunk : chunk.subarray(0, bytesRead));
       total += bytesRead;
+    }
+    // The loop above only ever asks for up to `size` bytes, so it cannot by
+    // itself detect the file having grown past that — one bounded follow-up
+    // read closes that gap without reopening the unbounded-EOF loop it fixes.
+    if (total === size) {
+      total += fs.readSync(fd, chunk, 0, 1, null);
     }
     if (total !== size) {
       throw new Error(`size changed while hashing: ${filePath} (expected ${size}, read ${total})`);
@@ -662,6 +684,21 @@ export function setEnabled(
   }
 
   artifact.enabled = enabled;
+
+  // skill/agent toggles rename the artifact's own SKILL.md/<name>.md to and
+  // from a ".disabled" sibling, and the hook toggle rewrites its frontmatter
+  // `enabled:` line in place — both change exactly what computeArtifactHash
+  // sees. That's an authorized, in-tool change, not tampering, so re-record
+  // over an existing baseline rather than leaving it to age into a false
+  // "modified" that the next `enable` would then refuse without --force.
+  if (
+    artifact.contentHash &&
+    (artifact.type === "skill" || artifact.type === "agent" || artifact.type === "hook")
+  ) {
+    const computed = computeArtifactHash(artifact);
+    if (computed) artifact.contentHash = computed.hash;
+  }
+
   return { ok: true };
 }
 
