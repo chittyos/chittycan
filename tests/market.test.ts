@@ -487,6 +487,23 @@ describe("symlinks", () => {
     expect(verifyArtifact(a).status).toBe("modified");
   });
 
+  it("detects a symlink retargeted between a literal '~/...' target and its escaped form", () => {
+    // toPortableTarget escapes a literal "~"-prefixed target by prepending
+    // "\". Without also escaping a target that already starts with "\", the
+    // literal targets "~/shared/lib.md" and "\~/shared/lib.md" both encode
+    // to the same "\~/shared/lib.md" string, hiding a retarget between them.
+    const a = makeArtifact("skill-tilde-escape-collision", { "SKILL.md": "x\n" });
+    const link = path.join(a.standalone.path!, "lib.md");
+    fs.symlinkSync("~/shared/lib.md", link);
+    recordArtifactHash(a);
+    expect(verifyArtifact(a).status).toBe("ok");
+
+    fs.unlinkSync(link);
+    fs.symlinkSync("\\~/shared/lib.md", link);
+
+    expect(verifyArtifact(a).status).toBe("modified");
+  });
+
   it("reports a dangling symlink root as missing, not as a one-entry pass", () => {
     const a = makeArtifact("skill-danglingroot", { "SKILL.md": "x\n" });
     const linkPath = path.join(tmpRoot, "dangling-root");
@@ -936,6 +953,19 @@ describe("normalizeArtifactPath", () => {
     const cwd = path.join(home, "projects", "chittycan");
     const target = path.resolve(cwd, "skills/foo");
     expect(normalizeArtifactPath("skills/foo", cwd)).toBe("~" + target.slice(home.length));
+  });
+
+  it("canonicalizes an absolute path's .. segments before deciding whether it falls under HOME", () => {
+    // Unresolved, "/home/alice/../shared/skill" is lexically prefixed by
+    // "/home/alice/" even though it actually resolves to "/home/shared/skill",
+    // outside home. Without normalizing first, this would be wrongly encoded
+    // as the portable "~/../shared/skill" — a path that resolves somewhere
+    // else entirely on an installation with a different home directory.
+    const home = os.homedir();
+    const raw = `${home}/../shared/skill`;
+    const resolved = path.resolve(raw);
+    expect(normalizeArtifactPath(raw)).toBe(resolved);
+    expect(normalizeArtifactPath(raw)).not.toBe("~/../shared/skill");
   });
 });
 

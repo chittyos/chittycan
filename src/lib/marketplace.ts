@@ -141,12 +141,16 @@ function toPortableTarget(target: string): string {
   }
   // A symlink target is arbitrary text, not a validated path — nothing stops
   // it from already starting with a literal "~" (which the OS does NOT
-  // expand; it is just another path segment). Left as-is, that would collide
-  // with the encoding above: an absolute target under $HOME and a literal
-  // "~/..." target both produce the same string, so retargeting a symlink
-  // between the two leaves the hash unchanged. Escape it so the two can
-  // never collide; the branch above never itself produces an escaped value.
-  return target.startsWith("~") ? "\\" + target : target;
+  // expand; it is just another path segment) or a literal "\" (the escape
+  // character below). Left as-is, either would collide with this function's
+  // own output: an absolute target under $HOME and a literal "~/..." target
+  // would otherwise both produce the same string, and a literal "\~/..."
+  // target would collide with the escaped form of "~/...". Escaping any
+  // leading "~" OR "\" keeps the mapping injective — the branch above never
+  // produces a value starting with "\", so a leading "\" unambiguously marks
+  // an escaped raw target, and it can always be undone by dropping one
+  // leading "\".
+  return /^[~\\]/.test(target) ? "\\" + target : target;
 }
 
 /**
@@ -164,7 +168,13 @@ function toPortableTarget(target: string): string {
  */
 export function normalizeArtifactPath(p: string, cwd: string = process.cwd()): string {
   if (!p || p.startsWith("~/")) return p;
-  const abs = path.isAbsolute(p) ? p : path.resolve(cwd, p);
+  // path.resolve also normalizes (collapses "." and ".." segments) even when
+  // `p` is already absolute — necessary because an absolute input like
+  // "/home/alice/../shared/skill" would otherwise pass through un-normalized
+  // and lexically (but not actually) fall under $HOME, encoding a portable
+  // "~/../shared/skill" path that resolves somewhere else entirely on an
+  // installation with a different home directory.
+  const abs = path.resolve(cwd, p);
   return toPortableTarget(abs);
 }
 
