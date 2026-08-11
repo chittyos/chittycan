@@ -273,14 +273,25 @@ const HASH_CHUNK_SIZE = 64 * 1024;
  * open (e.g. to a FIFO or device), the open fails closed with ELOOP instead of
  * following the link — which for a FIFO would otherwise block indefinitely,
  * and for a device such as /dev/zero would read forever.
+ *
+ * O_NOFOLLOW alone does not cover a swap to a FIFO or device made directly at
+ * the same path (no symlink involved): opening one blocking would still hang
+ * this call itself. O_NONBLOCK makes that open return immediately instead —
+ * it has no effect on reads from a genuine regular file — and the `isFile()`
+ * check right after rejects whatever was actually opened before any read is
+ * attempted.
  */
 function updateFramedFile(digest: crypto.Hash, filePath: string, followSymlink: boolean): void {
-  const flags = followSymlink
-    ? fs.constants.O_RDONLY
-    : fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW;
+  const nonBlocking = fs.constants.O_NONBLOCK ?? 0;
+  const flags =
+    (followSymlink ? fs.constants.O_RDONLY : fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW) |
+    nonBlocking;
   const fd = fs.openSync(filePath, flags);
   try {
     const st = fs.fstatSync(fd);
+    if (!st.isFile()) {
+      throw new Error(`not a regular file (swapped after collection): ${filePath}`);
+    }
     const size = st.size;
     const executable = (st.mode & 0o111) !== 0;
     // Bind the executable bit: `chmod +x` on a script an agent or hook can
@@ -369,7 +380,11 @@ export function computeArtifactHash(
       updateFramed(digest, Buffer.from(entry.rel, "utf8"));
       updateFramed(digest, Buffer.from(entry.kind, "utf8"));
       if (entry.kind === "symlink") {
-        updateFramed(digest, Buffer.from(fs.readlinkSync(entry.abs), "utf8"));
+        // Same portability rule as the root link target (see toPortableTarget
+        // above): an absolute interior target under $HOME is machine-specific,
+        // so leaving it unnormalized would make a hash recorded on one install
+        // never match on another even when content and layout are identical.
+        updateFramed(digest, Buffer.from(toPortableTarget(fs.readlinkSync(entry.abs)), "utf8"));
       } else if (entry.kind === "file") {
         updateFramedFile(digest, entry.abs, !!entry.isRoot);
       }

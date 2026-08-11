@@ -438,6 +438,37 @@ describe("symlinks", () => {
     }
   });
 
+  it("normalizes an interior symlink target under $HOME so the hash is portable across machines", () => {
+    // Same scenario as the root-link portability test above, but for a
+    // symlink found INSIDE the artifact tree rather than the artifact root
+    // itself — the two are framed by separate code paths.
+    const prevHome = process.env.HOME;
+    try {
+      const homeA = fs.mkdtempSync(path.join(os.tmpdir(), "chittymarket-ihomeA-"));
+      process.env.HOME = homeA;
+      const targetA = path.join(homeA, "shared", "lib.md");
+      fs.ensureDirSync(path.dirname(targetA));
+      fs.writeFileSync(targetA, "trusted\n", "utf8");
+      const artifactA = makeArtifact("skill-interior-portable-a", { "SKILL.md": "x\n" });
+      fs.symlinkSync(targetA, path.join(artifactA.standalone.path!, "lib.md"));
+      const hashA = computeArtifactHash(artifactA)!.hash;
+
+      const homeB = fs.mkdtempSync(path.join(os.tmpdir(), "chittymarket-ihomeB-"));
+      process.env.HOME = homeB;
+      const targetB = path.join(homeB, "shared", "lib.md");
+      fs.ensureDirSync(path.dirname(targetB));
+      fs.writeFileSync(targetB, "trusted\n", "utf8");
+      const artifactB = makeArtifact("skill-interior-portable-b", { "SKILL.md": "x\n" });
+      fs.symlinkSync(targetB, path.join(artifactB.standalone.path!, "lib.md"));
+      const hashB = computeArtifactHash(artifactB)!.hash;
+
+      expect(hashA).toBe(hashB);
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+    }
+  });
+
   it("reports a dangling symlink root as missing, not as a one-entry pass", () => {
     const a = makeArtifact("skill-danglingroot", { "SKILL.md": "x\n" });
     const linkPath = path.join(tmpRoot, "dangling-root");
