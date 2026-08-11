@@ -173,7 +173,16 @@ function toPortableTarget(target: string): string {
  * home directory, rewritten to the same portable `~/...` form.
  */
 export function normalizeArtifactPath(p: string, cwd: string = process.cwd()): string {
-  if (!p || p.startsWith("~/")) return p;
+  if (!p) return p;
+  // A `~/`-prefixed input can itself carry ".." segments, e.g. `~/../shared/skill`
+  // — resolve it against the home directory and re-canonicalize the same way the
+  // non-"~/" branch below does, instead of passing it through unresolved. Left
+  // unresolved, the traversal is stored verbatim and resolves to a different (or
+  // missing) path on an installation with a different home directory.
+  if (p.startsWith("~/")) {
+    const abs = path.resolve(os.homedir(), p.slice(2));
+    return toPortableTarget(abs);
+  }
   // path.resolve also normalizes (collapses "." and ".." segments) even when
   // `p` is already absolute — necessary because an absolute input like
   // "/home/alice/../shared/skill" would otherwise pass through un-normalized

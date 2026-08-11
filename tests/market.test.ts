@@ -969,6 +969,17 @@ describe("normalizeArtifactPath", () => {
     expect(normalizeArtifactPath(raw)).not.toBe("~/../shared/skill");
   });
 
+  it("canonicalizes a ~/-prefixed path's .. segments before deciding whether it stays under HOME", () => {
+    // Quoted as `"~/../shared/skill"`, this used to skip the canonicalization
+    // applied to the unquoted/absolute case above, storing the literal
+    // traversal instead of resolving it — which resolves to a different (or
+    // missing) path on an installation with a different HOME.
+    const home = os.homedir();
+    const resolved = path.resolve(home, "..", "shared", "skill");
+    expect(normalizeArtifactPath("~/../shared/skill")).toBe(resolved);
+    expect(normalizeArtifactPath("~/../shared/skill")).not.toBe("~/../shared/skill");
+  });
+
   it("round-trips through resolveHome when the artifact path is exactly HOME", () => {
     // A path landing exactly on HOME (target.slice(home.length) === "") must
     // still come out as "~/", not the bare "~" that resolveHome's "~/" prefix
