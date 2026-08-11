@@ -24,6 +24,7 @@ import {
   syncWithRepo,
   pushToRepo,
   resolveHome,
+  normalizeArtifactPath,
   verifyArtifact,
   verifyPassed,
   recordArtifactHash,
@@ -114,7 +115,7 @@ export async function marketAdd(opts: {
     standalone: {
       available: true,
       type: opts.type ?? "skill",
-      path: opts.artifactPath,
+      path: normalizeArtifactPath(opts.artifactPath),
     },
     ch1tty: { available: false },
     tags: opts.tags ? opts.tags.split(",").map((t) => t.trim()) : [],

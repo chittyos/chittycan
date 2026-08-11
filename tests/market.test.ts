@@ -16,6 +16,7 @@ import {
   verifyPassed,
   recordArtifactHash,
   mergeArtifactsIntoRepo,
+  normalizeArtifactPath,
   type MarketplaceArtifact,
   type Marketplace,
 } from "../src/lib/marketplace";
@@ -863,5 +864,80 @@ describe("mergeArtifactsIntoRepo — push propagates hash updates", () => {
 
     expect(result).toEqual({ pushed: 0, updated: 0 });
     expect((repo.artifacts[0] as MarketplaceArtifact).contentHash).toBe("trusted-hash");
+  });
+});
+
+describe("normalizeArtifactPath", () => {
+  it("leaves an already-portable ~/ path untouched", () => {
+    expect(normalizeArtifactPath("~/skills/foo")).toBe("~/skills/foo");
+  });
+
+  it("leaves an absolute path outside home untouched", () => {
+    expect(normalizeArtifactPath("/opt/skills/foo", "/anywhere")).toBe("/opt/skills/foo");
+  });
+
+  it("resolves a relative path against the given cwd, not process.cwd()", () => {
+    const cwd = path.join(os.tmpdir(), "some", "project", "dir");
+    expect(normalizeArtifactPath("skills/foo", cwd)).toBe(path.resolve(cwd, "skills/foo"));
+  });
+
+  it("rewrites a relative path landing under HOME to its portable ~/ form", () => {
+    const home = os.homedir();
+    const cwd = path.join(home, "projects", "chittycan");
+    const target = path.resolve(cwd, "skills/foo");
+    expect(normalizeArtifactPath("skills/foo", cwd)).toBe("~" + target.slice(home.length));
+  });
+});
+
+describe("marketAdd — relative --path survives a later CWD change", () => {
+  it("resolves against the CWD at add time, not whatever CWD verify is later run from", async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "chittymarket-cmd-"));
+    const prevHome = process.env.HOME;
+    const prevCwd = process.cwd();
+    const out: string[] = [];
+    let spy: ReturnType<typeof vi.spyOn> | undefined;
+
+    cleanups.push(() => {
+      spy?.mockRestore();
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      process.chdir(prevCwd);
+      process.exitCode = undefined;
+      fs.removeSync(home);
+    });
+
+    process.env.HOME = home;
+    process.exitCode = undefined;
+
+    vi.resetModules();
+    const cmd = await import("../src/commands/market");
+
+    spy = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+      out.push(args.map(String).join(" "));
+    });
+
+    const projectDir = path.join(home, "projects", "myproj");
+    const skillDir = path.join(projectDir, "skills", "foo");
+    fs.ensureDirSync(skillDir);
+    fs.writeFileSync(path.join(skillDir, "SKILL.md"), "# Foo\n", "utf8");
+
+    process.chdir(projectDir);
+    await cmd.marketAdd({ id: "skill-foo", artifactPath: "skills/foo", type: "skill" });
+
+    const manifestPath = path.join(home, ".config", "chitty", "marketplace.json");
+    const manifest = fs.readJsonSync(manifestPath);
+    const stored = manifest.artifacts.find((a: any) => a.id === "skill-foo").standalone.path;
+    expect(stored).not.toBe("skills/foo");
+    expect(path.isAbsolute(stored) || stored.startsWith("~/")).toBe(true);
+
+    // Verify from an unrelated CWD: with the bug, "skills/foo" would have been
+    // resolved against *this* directory instead and reported missing.
+    process.chdir(os.tmpdir());
+    out.length = 0;
+    process.exitCode = undefined;
+    await cmd.marketVerify({ id: "skill-foo", record: true });
+
+    expect(process.exitCode).not.toBe(1);
+    expect(out.join("\n")).not.toContain("path does not exist");
   });
 });

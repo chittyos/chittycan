@@ -141,6 +141,25 @@ function toPortableTarget(target: string): string {
     : target;
 }
 
+/**
+ * Normalize a user-supplied artifact path at registration time so later
+ * lookups (verify/enable/info, possibly invoked from a different CWD) are
+ * unambiguous. `resolveHome` only ever expands a leading `~/`; a relative
+ * path stored as-is resolves against whatever directory `can` happens to be
+ * run from next, so the same artifact can appear missing, hash unrelated
+ * files, or record the wrong baseline depending on the caller's CWD.
+ *
+ * A `~/...` path is already portable and left untouched. Anything else is
+ * resolved against `cwd` (the CWD at the moment of registration, i.e. where
+ * the relative path was actually meaningful) and, if that lands under the
+ * home directory, rewritten to the same portable `~/...` form.
+ */
+export function normalizeArtifactPath(p: string, cwd: string = process.cwd()): string {
+  if (!p || p.startsWith("~/")) return p;
+  const abs = path.isAbsolute(p) ? p : path.resolve(cwd, p);
+  return toPortableTarget(abs);
+}
+
 // ---------------------------------------------------------------------------
 // Content hashing / verification
 // ---------------------------------------------------------------------------
