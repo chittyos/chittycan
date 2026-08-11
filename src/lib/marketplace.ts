@@ -179,6 +179,8 @@ interface HashEntry {
   rel: string;
   kind: "file" | "symlink" | "dir";
   abs: string;
+  /** True only for the single entry representing a file-typed artifact ROOT. */
+  isRoot?: boolean;
 }
 
 /**
@@ -207,7 +209,7 @@ function collectEntries(root: string): HashEntry[] {
     if (!fs.statSync(root).isFile()) {
       throw new Error(`not a regular file: ${root}`);
     }
-    return [{ rel: path.basename(root), kind: "file", abs: root }];
+    return [{ rel: path.basename(root), kind: "file", abs: root, isRoot: true }];
   }
 
   const out: HashEntry[] = [];
@@ -262,9 +264,21 @@ const HASH_CHUNK_SIZE = 64 * 1024;
  * the fd reported — the file was truncated or grown mid-hash — that mismatch
  * throws, which the caller's try/catch turns into "unverifiable" rather than
  * a digest over a byte count that doesn't match what was framed.
+ *
+ * `followSymlink` distinguishes the artifact ROOT (read through intentionally,
+ * even when it is itself a symlink — see computeArtifactHash) from every other
+ * entry. An interior entry was already confirmed NOT a symlink by `lstat` when
+ * `collectEntries` walked the tree; opening it here with O_NOFOLLOW means that
+ * if it was swapped for a symlink in the window between that walk and this
+ * open (e.g. to a FIFO or device), the open fails closed with ELOOP instead of
+ * following the link — which for a FIFO would otherwise block indefinitely,
+ * and for a device such as /dev/zero would read forever.
  */
-function updateFramedFile(digest: crypto.Hash, filePath: string): void {
-  const fd = fs.openSync(filePath, "r");
+function updateFramedFile(digest: crypto.Hash, filePath: string, followSymlink: boolean): void {
+  const flags = followSymlink
+    ? fs.constants.O_RDONLY
+    : fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW;
+  const fd = fs.openSync(filePath, flags);
   try {
     const st = fs.fstatSync(fd);
     const size = st.size;
@@ -357,7 +371,7 @@ export function computeArtifactHash(
       if (entry.kind === "symlink") {
         updateFramed(digest, Buffer.from(fs.readlinkSync(entry.abs), "utf8"));
       } else if (entry.kind === "file") {
-        updateFramedFile(digest, entry.abs);
+        updateFramedFile(digest, entry.abs, !!entry.isRoot);
       }
       // "dir" entries contribute only rel + kind: their existence and
       // position in the tree, not any content of their own.
