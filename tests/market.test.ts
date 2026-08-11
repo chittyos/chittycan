@@ -469,6 +469,24 @@ describe("symlinks", () => {
     }
   });
 
+  it("detects a symlink retargeted from an absolute $HOME path to a literal '~/...' target", () => {
+    // toPortableTarget encodes an absolute target under $HOME and a literal
+    // tilde-prefixed target string to the same "~/..." form. The two are
+    // genuinely different targets (the OS never expands a literal "~" in a
+    // symlink target), so retargeting between them must still change the hash.
+    const a = makeArtifact("skill-tilde-collision", { "SKILL.md": "x\n" });
+    const link = path.join(a.standalone.path!, "lib.md");
+    const absoluteTarget = path.join(os.homedir(), "shared", "lib.md");
+    fs.symlinkSync(absoluteTarget, link);
+    recordArtifactHash(a);
+    expect(verifyArtifact(a).status).toBe("ok");
+
+    fs.unlinkSync(link);
+    fs.symlinkSync("~/shared/lib.md", link);
+
+    expect(verifyArtifact(a).status).toBe("modified");
+  });
+
   it("reports a dangling symlink root as missing, not as a one-entry pass", () => {
     const a = makeArtifact("skill-danglingroot", { "SKILL.md": "x\n" });
     const linkPath = path.join(tmpRoot, "dangling-root");

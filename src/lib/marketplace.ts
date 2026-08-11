@@ -136,9 +136,17 @@ export function resolveHome(p: string): string {
  */
 function toPortableTarget(target: string): string {
   const home = os.homedir();
-  return target === home || target.startsWith(home + path.sep)
-    ? "~" + target.slice(home.length)
-    : target;
+  if (target === home || target.startsWith(home + path.sep)) {
+    return "~" + target.slice(home.length);
+  }
+  // A symlink target is arbitrary text, not a validated path — nothing stops
+  // it from already starting with a literal "~" (which the OS does NOT
+  // expand; it is just another path segment). Left as-is, that would collide
+  // with the encoding above: an absolute target under $HOME and a literal
+  // "~/..." target both produce the same string, so retargeting a symlink
+  // between the two leaves the hash unchanged. Escape it so the two can
+  // never collide; the branch above never itself produces an escaped value.
+  return target.startsWith("~") ? "\\" + target : target;
 }
 
 /**
