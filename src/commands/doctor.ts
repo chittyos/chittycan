@@ -138,8 +138,10 @@ export async function doctor(): Promise<void> {
   ];
 
   for (const cs of credentialSurfaces) {
-    const inEnv = !!process.env[cs.env];
-    const inConfig = !!(cs.configPath && config.sync && getNestedValue(config, cs.configPath));
+    const inEnv = Object.prototype.hasOwnProperty.call(process.env, cs.env);
+    const inConfig =
+      !!cs.configPath && !!config.sync &&
+      hasNestedOwnProperty(config, cs.configPath);
 
     if (inEnv || inConfig) {
       const where = [inConfig ? "config file" : null, inEnv ? "runtime environment" : null]
@@ -188,6 +190,19 @@ export async function doctor(): Promise<void> {
   console.log();
 }
 
-function getNestedValue(obj: any, path: string): any {
-  return path.split('.').reduce((acc, part) => acc?.[part], obj);
+/**
+ * True if `path` (dot-separated) names an own property of some nested object
+ * under `obj` — walking the intermediate segments to reach the parent, but
+ * never reading the final value itself. Used for presence-only checks where
+ * even an empty-string secret must count as "at rest".
+ */
+function hasNestedOwnProperty(obj: any, path: string): boolean {
+  const parts = path.split(".");
+  const last = parts.pop()!;
+  let cur = obj;
+  for (const part of parts) {
+    if (cur == null || typeof cur !== "object") return false;
+    cur = cur[part];
+  }
+  return cur != null && typeof cur === "object" && Object.prototype.hasOwnProperty.call(cur, last);
 }
