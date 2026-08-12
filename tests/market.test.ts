@@ -890,6 +890,22 @@ describe("marketEnable — integrity gate", () => {
     expect(h.exitCode()).toBe(1);
     expect(h.out.join("\n")).toContain("Refusing to enable");
   });
+
+  it("warns rather than silently enabling an artifact that never had a path or a recorded hash", async () => {
+    const h = await harness();
+    h.addSkill("skill-a", { "SKILL.md": "x\n" });
+
+    const manifest = h.readManifest();
+    const artifact = manifest.artifacts.find((a: any) => a.id === "skill-a");
+    expect(artifact.contentHash).toBeUndefined();
+    artifact.standalone.path = "";
+    fs.writeJsonSync(path.join(h.home, ".config", "chitty", "marketplace.json"), manifest, { spaces: 2 });
+
+    await h.enable("skill-a");
+
+    expect(h.exitCode()).toBeUndefined();
+    expect(h.out.join("\n")).toContain("no recorded hash");
+  });
 });
 
 describe("computeArtifactHash — large files are hashed in bounded chunks", () => {

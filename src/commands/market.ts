@@ -181,9 +181,16 @@ export async function marketEnable(id: string, opts: { force?: boolean } = {}): 
     if (blocking && opts.force) {
       console.log(chalk.yellow(`⚠️  ${id} fails verification (${integrity.status}) — enabling anyway because --force was given.`));
     }
-    if (integrity.status === "unrecorded") {
+    if (
+      integrity.status === "unrecorded" ||
+      (integrity.status === "unpathed" && !artifact.contentHash)
+    ) {
       console.log(chalk.yellow(`⚠️  ${id} has no recorded hash — enabling unverified content.`));
-      console.log(chalk.dim(`   Establish a baseline with ${chalk.white(`can market verify ${id} --record`)}.`));
+      if (integrity.status === "unpathed") {
+        console.log(chalk.dim(`   No standalone.path declared — falling back to the global ${artifact.type} directory.`));
+      } else {
+        console.log(chalk.dim(`   Establish a baseline with ${chalk.white(`can market verify ${id} --record`)}.`));
+      }
     }
   }
 
