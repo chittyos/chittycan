@@ -331,6 +331,28 @@ describe("hash scope — executable content is not excluded", () => {
     fs.chmodSync(runPath, 0o510);
     expect(computeArtifactHash(a)!.hash).not.toBe(before);
   });
+
+  it("excludes execute bits from the hash on win32, so a POSIX-recorded baseline still verifies there", () => {
+    // Windows does not preserve POSIX owner/group/other execute bits in
+    // st.mode, so hashing them would make identical content hash differently
+    // depending on which platform recorded it — failing verification for a
+    // baseline pushed from POSIX and checked on Windows despite no real
+    // content change.
+    const a = makeArtifact("skill-chmod-win32", { "run.sh": "#!/bin/sh\necho hi\n" });
+    const runPath = path.join(a.standalone.path!, "run.sh");
+
+    fs.chmodSync(runPath, 0o644);
+    const nonExecHash = computeArtifactHash(a)!.hash;
+
+    const prevPlatform = process.platform;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    try {
+      fs.chmodSync(runPath, 0o755);
+      expect(computeArtifactHash(a)!.hash).toBe(nonExecHash);
+    } finally {
+      Object.defineProperty(process, "platform", { value: prevPlatform });
+    }
+  });
 });
 
 describe("non-regular root files", () => {

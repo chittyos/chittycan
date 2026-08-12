@@ -349,7 +349,12 @@ function updateFramedFile(digest: crypto.Hash, filePath: string, followSymlink: 
     // (group gaining it does not restore it — owner bits alone govern access
     // for the owning user) even though "some" execute bit remains set either
     // way.
-    const execBits = st.mode & 0o111;
+    //
+    // Windows does not preserve POSIX execute bits in `st.mode`, so hashing
+    // them there would make identical file content hash differently across
+    // platforms and fail verification on a synced/pushed baseline with no
+    // real change. Exclude them from the digest on win32 instead.
+    const execBits = process.platform === "win32" ? 0 : st.mode & 0o111;
     updateFramed(digest, Buffer.from([execBits]));
 
     const len = Buffer.alloc(8);
