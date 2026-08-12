@@ -315,6 +315,22 @@ describe("hash scope — executable content is not excluded", () => {
 
     expect(computeArtifactHash(a)!.hash).not.toBe(before);
   });
+
+  it("changes when execute moves from owner to group even though some execute bit stays set", () => {
+    // 0500 (owner r-x) -> 0510 (owner r--, group --x): the file owner loses
+    // their own execute access — owner bits alone govern access for the
+    // owning user, group bits are irrelevant to them — even though "some"
+    // execute bit remains set in both modes. A digest that only records
+    // whether any of owner/group/other has execute set cannot see this.
+    const a = makeArtifact("skill-chmod-bits", { "run.sh": "#!/bin/sh\necho hi\n" });
+    const runPath = path.join(a.standalone.path!, "run.sh");
+
+    fs.chmodSync(runPath, 0o500);
+    const before = computeArtifactHash(a)!.hash;
+
+    fs.chmodSync(runPath, 0o510);
+    expect(computeArtifactHash(a)!.hash).not.toBe(before);
+  });
 });
 
 describe("non-regular root files", () => {

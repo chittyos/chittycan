@@ -341,11 +341,16 @@ function updateFramedFile(digest: crypto.Hash, filePath: string, followSymlink: 
       throw new Error(`not a regular file (swapped after collection): ${filePath}`);
     }
     const size = st.size;
-    const executable = (st.mode & 0o111) !== 0;
-    // Bind the executable bit: `chmod +x` on a script an agent or hook can
-    // invoke directly is a behavioral change the byte content alone does
-    // not capture.
-    updateFramed(digest, Buffer.from(executable ? "x" : "-", "utf8"));
+    // Bind the exact owner/group/other execute bits, not just whether any of
+    // them is set: `chmod +x` on a script an agent or hook can invoke
+    // directly is a behavioral change the byte content alone does not
+    // capture, and collapsing all three bits into one boolean misses a
+    // change like 0500 -> 0510, where the file's owner loses execute access
+    // (group gaining it does not restore it — owner bits alone govern access
+    // for the owning user) even though "some" execute bit remains set either
+    // way.
+    const execBits = st.mode & 0o111;
+    updateFramed(digest, Buffer.from([execBits]));
 
     const len = Buffer.alloc(8);
     len.writeBigUInt64BE(BigInt(size));
