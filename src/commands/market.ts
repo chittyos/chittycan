@@ -366,6 +366,16 @@ export async function marketVerify(opts: {
         process.exitCode = 1;
         continue;
       }
+      // --force reaches this loop without ever going through the printout
+      // above, so a replaced baseline must be shown here instead — otherwise
+      // the previously-trusted hash is overwritten without appearing in the
+      // command output anywhere.
+      if (artifact.contentHash && artifact.contentHash !== result.actual) {
+        console.log(
+          chalk.yellow(`   replacing sha256:${artifact.contentHash.slice(0, 16)}…`) +
+            chalk.dim(` -> sha256:${result.actual.slice(0, 16)}…`)
+        );
+      }
       artifact.contentHash = result.actual;
       recorded++;
       console.log(chalk.green(`✅ Recorded ${artifact.id}`) + chalk.dim(` sha256:${result.actual.slice(0, 16)}…`));

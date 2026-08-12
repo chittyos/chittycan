@@ -853,6 +853,26 @@ describe("marketVerify — record guard", () => {
 
     expect(h.readManifest().artifacts.find((a: any) => a.id === "skill-a").contentHash).not.toBe(before);
   });
+
+  it("prints the replaced hash when --force re-records a modified artifact", async () => {
+    // --force skips the refusal block that normally prints old-vs-new hashes,
+    // so the recording loop itself must show what it is overwriting —
+    // otherwise the previously-trusted baseline is silently discarded with
+    // no record of it anywhere in the output.
+    const h = await harness();
+    const dir = h.addSkill("skill-a", { "SKILL.md": "v1\n" });
+    await h.verify({ all: true, record: true });
+    const before = h.readManifest().artifacts.find((a: any) => a.id === "skill-a").contentHash;
+
+    fs.writeFileSync(path.join(dir, "SKILL.md"), "v2\n", "utf8");
+    await h.verify({ all: true, record: true, force: true });
+
+    const after = h.readManifest().artifacts.find((a: any) => a.id === "skill-a").contentHash;
+    const output = h.out.join("\n");
+    expect(output).toContain("replacing");
+    expect(output).toContain(before.slice(0, 16));
+    expect(output).toContain(after.slice(0, 16));
+  });
 });
 
 describe("marketEnable — integrity gate", () => {
