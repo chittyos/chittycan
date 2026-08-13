@@ -606,6 +606,56 @@ describe("symlinks", () => {
     expect(verifyArtifact(a).status).toBe("modified");
   });
 
+  it("does not coalesce two different homedirs' off-home '..'-escaping symlink targets into the same hash", () => {
+    // A raw target literally spelled "$HOME/../shared/lib.md" is lexically
+    // prefixed by $HOME even though it resolves to a sibling of home, not
+    // somewhere under it. Without canonicalizing ".." first, the old
+    // underHome check matched on that lexical prefix alone and encoded it as
+    // the portable "~/../shared/lib.md" — the SAME string on every install,
+    // regardless of each install's actual (different) home directory. That
+    // silently treated genuinely different, machine-specific raw targets as
+    // an identical, portable one.
+    const prevHome = process.env.HOME;
+    try {
+      const homeA = fs.mkdtempSync(path.join(os.tmpdir(), "chittymarket-dotsA-"));
+      process.env.HOME = homeA;
+      const artifactA = makeArtifact("skill-dots-a", { "SKILL.md": "x\n" });
+      fs.symlinkSync(`${homeA}/../shared/lib.md`, path.join(artifactA.standalone.path!, "lib.md"));
+      const hashA = computeArtifactHash(artifactA)!.hash;
+
+      const homeB = fs.mkdtempSync(path.join(os.tmpdir(), "chittymarket-dotsB-"));
+      process.env.HOME = homeB;
+      const artifactB = makeArtifact("skill-dots-b", { "SKILL.md": "x\n" });
+      fs.symlinkSync(`${homeB}/../shared/lib.md`, path.join(artifactB.standalone.path!, "lib.md"));
+      const hashB = computeArtifactHash(artifactB)!.hash;
+
+      expect(hashA).not.toBe(hashB);
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+    }
+  });
+
+  it("recognizes a '..'-laden symlink target that genuinely resolves under home as equivalent to the direct spelling", () => {
+    // "$HOME/../<user>/shared/lib.md" resolves to exactly the same real file
+    // as "$HOME/shared/lib.md" when $HOME's basename is <user>. Once ".."
+    // is canonicalized before the underHome check, both spellings land under
+    // home and encode to the same portable "~/shared/lib.md" — so switching
+    // between them is recognized as pointing at the same real target, not
+    // flagged as a content change.
+    const home = os.homedir();
+    const userDir = path.basename(home);
+    const a = makeArtifact("skill-dots-under-home", { "SKILL.md": "x\n" });
+    const link = path.join(a.standalone.path!, "lib.md");
+    fs.symlinkSync(path.join(home, "..", userDir, "shared", "lib.md"), link);
+    recordArtifactHash(a);
+
+    fs.unlinkSync(link);
+    fs.symlinkSync(path.join(home, "shared", "lib.md"), link);
+
+    expect(verifyArtifact(a).status).toBe("ok");
+  });
+
   it("detects a symlink ROOT retargeted to different content with an identical hashed shape", () => {
     // Two directories with identical file trees (same rel, same bytes) hash
     // identically on their own. Only the root link's own target distinguishes

@@ -136,6 +136,16 @@ export function resolveHome(p: string): string {
  */
 function toPortableTarget(target: string): string {
   const home = os.homedir();
+  // Canonicalize ".." / "." segments in an absolute target before deciding
+  // whether it falls under home — mirrors normalizeArtifactPath's use of
+  // path.resolve() for the same reason. A raw symlink target such as
+  // "$HOME/../shared/lib.md" is lexically prefixed by $HOME even though it
+  // resolves outside it; left unresolved, that would be wrongly encoded as
+  // the portable "~/../shared/lib.md", which resolves to a different (or
+  // missing) location on an install with a different home directory. A
+  // relative target (e.g. "../lib.md") is left untouched — it is never
+  // compared against home and is already portable as-is.
+  const canonical = path.isAbsolute(target) ? path.normalize(target) : target;
   // Windows paths are case-insensitive, so os.homedir()'s case need not match
   // the case a caller resolved the target with (e.g. a differently-cased
   // drive letter or username segment). Comparing case-sensitively there would
@@ -144,16 +154,16 @@ function toPortableTarget(target: string): string {
   // POSIX paths are case-sensitive, so this must stay exact everywhere else.
   const underHome =
     process.platform === "win32"
-      ? target.toLowerCase() === home.toLowerCase() ||
-        target.toLowerCase().startsWith((home + path.sep).toLowerCase())
-      : target === home || target.startsWith(home + path.sep);
+      ? canonical.toLowerCase() === home.toLowerCase() ||
+        canonical.toLowerCase().startsWith((home + path.sep).toLowerCase())
+      : canonical === home || canonical.startsWith(home + path.sep);
   if (underHome) {
     // Always emit a forward-slash "~/..." form — `resolveHome` only ever
-    // recognizes that prefix. Left as `target.slice(home.length)` verbatim,
-    // this would (a) come out as bare "~" with no slash when target === home
-    // exactly, and (b) carry `path.sep`-joined segments, which is "\\" on
-    // Windows — neither of which `resolveHome` decodes back to a real path.
-    const rel = target.slice(home.length).split(path.sep).join("/");
+    // recognizes that prefix. Left as `canonical.slice(home.length)` verbatim,
+    // this would (a) come out as bare "~" with no slash when canonical ===
+    // home exactly, and (b) carry `path.sep`-joined segments, which is "\\"
+    // on Windows — neither of which `resolveHome` decodes back to a real path.
+    const rel = canonical.slice(home.length).split(path.sep).join("/");
     return "~/" + rel.replace(/^\//, "");
   }
   // A symlink target is arbitrary text, not a validated path — nothing stops
