@@ -64,7 +64,6 @@
     "@notionhq/client": "^5.23.3",
     "@octokit/rest": "^22.0.1",
     "chalk": "^5.6.2",
-    "chittycan": "^0.3.0",
     "fs-extra": "^11.4.0",
     "inquirer": "^14.0.2",
     "ora": "^9.4.1",
