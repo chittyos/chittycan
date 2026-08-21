@@ -21,8 +21,11 @@
  * `|| true` suppression land on different lines. Those produce false negatives,
  * never false positives — the scoping in (b) is deliberately narrow because a
  * naive `exit 0` grep false-positives on legitimate early-return branches
- * (reusable-governance-gates.yml:29, governance-gates.yml:48) and on the
- * `|| true` inside a secret-scan pipeline (reusable-governance-gates.yml:25).
+ * (the credential-absent guards in reusable-governance-gates.yml and the
+ * dispatch-token skip in governance-gates.yml) and on the `|| true` inside a
+ * secret-scan pipeline (also in reusable-governance-gates.yml). Those are
+ * named rather than cited by line: a copied line number silently rots into a
+ * false claim the next time either file shifts, which is what happened here.
  */
 
 import { readFile } from "node:fs/promises";

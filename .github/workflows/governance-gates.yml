@@ -12,6 +12,23 @@ jobs:
       run_dependency_audit: true
     secrets: inherit
 
+  lockfile-present:
+    name: Lockfile present
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # gates/dependency-audit guards every step on `package-lock.json` being
+      # present and otherwise echoes and reports green. That is the correct
+      # default for the shared workflow (pnpm repos have no npm lockfile), but
+      # for THIS repo an absent lockfile means the audit silently stopped
+      # running. Assert it here so the disappearance is red, not invisible.
+      - name: Assert package-lock.json is present
+        run: |
+          if [[ ! -f package-lock.json ]]; then
+            echo "::error::package-lock.json missing - gates/dependency-audit no-ops silently without it"
+            exit 1
+          fi
+
   notify-org-control-loop:
     needs: gates
     runs-on: ubuntu-latest
