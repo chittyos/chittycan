@@ -25,11 +25,26 @@ Conceptually:
 ```text
 user verb/intent
   -> capability resolution
-  -> canonical capability/entity projection
-  -> environment/runtime pointer
+  -> canonical capability + governed projection
+  -> ChittyConfig environment/runtime pointer
   -> executable CLI/tool/agent/service
 ```
 
 External CLIs such as Git, GitHub CLI, Docker, Homebrew, Kubernetes, etc. remain ordinary execution targets and do not require ChittyEntity classification merely because ChittyCan can invoke them.
 
 ChittyCan may consume ChittyConfig, ChittyRegistry/Canon, ChittyMarket, or local adapters as routing inputs, but those projections must remain attributable to their canonical owners.
+
+## Learned-route boundary
+
+Local command memory, successful-command examples, usage history, AI suggestions, and self-healing output are **routing hints**, not canonical capability records and not authority grants.
+
+For ordinary external CLI commands, learned mappings may be reused according to normal execution policy.
+
+For ChittyOS-native targets or any route that can mutate infrastructure, configuration, auth, legal/evidence state, deployment, billing, or other governed resources:
+
+1. learned intent/command mappings may nominate a candidate target;
+2. ChittyCan MUST re-resolve the current canonical capability/projection and applicable environment pointer before consequential execution;
+3. stale learned mappings MUST NOT override current Canon/Registry/Config ownership or policy;
+4. inability to resolve required authoritative metadata must fail closed or require the applicable approval path rather than treating memory as authority.
+
+This allows ChittyCan to learn without letting historical local state become an unmanaged capability registry.
