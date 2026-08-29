@@ -115,28 +115,49 @@ export async function doctor(): Promise<void> {
     fix: !gitInstalled ? "Install git for post-commit hooks" : undefined
   });
 
-  // Environment tokens
-  const tokenChecks = [
+  // Credential exposure — HARD BLOCK.
+  //
+  // A credential must never be written into config, runtime, documentation or
+  // otherwise. Presence is therefore a FAILURE, not a pass. This check inverts
+  // the usual "is it configured?" polarity deliberately: an environment holding
+  // a credential at rest is not a complete environment, it is a defective one.
+  //
+  // Previously this block reported a token found in process.env or in
+  // config.sync.* as ✓ "Set in environment" / "Set in config" — so a complete
+  // dev environment was defined as one that had committed the violation, and a
+  // clean environment was reported as ⚠ with a fix instructing the operator to
+  // set the variable. Both polarities were backwards.
+  //
+  // Constraints this check honours:
+  //   - only PRESENCE is tested; no value is ever read, logged or printed
+  //   - nothing is removed or rewritten — grep-and-destroy is unsound, because
+  //     config may legitimately hold an item-ID reference rather than a value
+  const credentialSurfaces = [
     { name: "NOTION_TOKEN", env: "NOTION_TOKEN", configPath: "sync.notionToken" },
     { name: "GITHUB_TOKEN", env: "GITHUB_TOKEN", configPath: "sync.githubToken" },
   ];
 
-  for (const tc of tokenChecks) {
-    const envSet = !!process.env[tc.env];
-    const configSet = !!(tc.configPath && config.sync && getNestedValue(config, tc.configPath));
+  for (const cs of credentialSurfaces) {
+    const inEnv = Object.prototype.hasOwnProperty.call(process.env, cs.env);
+    const inConfig =
+      !!cs.configPath && !!config.sync &&
+      hasNestedOwnProperty(config, cs.configPath);
 
-    if (envSet || configSet) {
+    if (inEnv || inConfig) {
+      const where = [inConfig ? "config file" : null, inEnv ? "runtime environment" : null]
+        .filter(Boolean)
+        .join(" and ");
       checks.push({
-        name: tc.name,
-        status: "✓",
-        message: envSet ? "Set in environment" : "Set in config"
+        name: cs.name,
+        status: "✗",
+        message: `credential present in ${where} — hard block`,
+        fix: `Remove it from the ${where}. Credential material belongs in a node-sealed attachment, never at rest in config or environment. Route provisioning through ChittyConnect — do not set ${cs.env}.`
       });
     } else {
       checks.push({
-        name: tc.name,
-        status: "⚠",
-        message: "Not configured",
-        fix: `Set ${tc.env} environment variable or run: chitty sync setup`
+        name: cs.name,
+        status: "✓",
+        message: "no credential at rest in config or environment"
       });
     }
   }
@@ -169,6 +190,19 @@ export async function doctor(): Promise<void> {
   console.log();
 }
 
-function getNestedValue(obj: any, path: string): any {
-  return path.split('.').reduce((acc, part) => acc?.[part], obj);
+/**
+ * True if `path` (dot-separated) names an own property of some nested object
+ * under `obj` — walking the intermediate segments to reach the parent, but
+ * never reading the final value itself. Used for presence-only checks where
+ * even an empty-string secret must count as "at rest".
+ */
+function hasNestedOwnProperty(obj: any, path: string): boolean {
+  const parts = path.split(".");
+  const last = parts.pop()!;
+  let cur = obj;
+  for (const part of parts) {
+    if (cur == null || typeof cur !== "object") return false;
+    cur = cur[part];
+  }
+  return cur != null && typeof cur === "object" && Object.prototype.hasOwnProperty.call(cur, last);
 }
