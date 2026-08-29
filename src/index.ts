@@ -64,7 +64,7 @@ import {
 import { cleanup } from "./commands/cleanup.js";
 import { storeCommand } from "./commands/store.js";
 import { evaluateCommand } from "./commands/evaluate.js";
-import { marketCommand, marketList, marketAdd, marketEnable, marketDisable, marketInfo, marketSync, marketPush } from "./commands/market.js";
+import { marketCommand, marketList, marketAdd, marketEnable, marketDisable, marketInfo, marketVerify, marketSync, marketPush } from "./commands/market.js";
 import {
   proposeListCommand,
   proposeGenerateCommand,
@@ -347,13 +347,13 @@ yargs(args)
   )
   .command(
     "market <action> [id]",
-    "ChittyMarket: manage skill/plugin/agent artifacts (list, add, enable, disable, info, sync, push)",
+    "ChittyMarket: manage skill/plugin/agent artifacts (list, add, enable, disable, info, verify, sync, push)",
     (yargs) => {
       yargs
         .positional("action", {
-          describe: "Subcommand: list | add | enable | disable | info | sync | push",
+          describe: "Subcommand: list | add | enable | disable | info | verify | sync | push | pull",
           type: "string",
-          choices: ["list", "add", "enable", "disable", "info", "sync", "push"],
+          choices: ["list", "add", "enable", "disable", "info", "verify", "sync", "push", "pull"],
         })
         .positional("id", {
           describe: "Artifact ID (for enable/disable/info)",
@@ -372,7 +372,12 @@ yargs(args)
         .option("enabled", { type: "boolean", describe: "Filter to enabled artifacts" })
         .option("disabled", { type: "boolean", describe: "Filter to disabled artifacts" })
         // push options
-        .option("message", { type: "string", alias: "m", describe: "Git commit message for push" });
+        .option("message", { type: "string", alias: "m", describe: "Git commit message for push" })
+        // verify options
+        .option("all", { type: "boolean", describe: "Verify every registered artifact" })
+        .option("record", { type: "boolean", describe: "Record current on-disk hash as the trusted baseline" })
+        .option("force", { type: "boolean", describe: "Override an integrity failure (enable / verify --record)" })
+        .option("allow-empty", { type: "boolean", describe: "Treat an empty manifest as success instead of failure" });
     },
     async (argv) => {
       const action = argv.action as string;
@@ -400,13 +405,24 @@ yargs(args)
           });
           break;
         case "enable":
-          await marketEnable((argv.id ?? positionalId) as string);
+          await marketEnable((argv.id ?? positionalId) as string, {
+            force: argv.force as boolean | undefined,
+          });
           break;
         case "disable":
           await marketDisable((argv.id ?? positionalId) as string);
           break;
         case "info":
           await marketInfo((argv.id ?? positionalId) as string);
+          break;
+        case "verify":
+          await marketVerify({
+            id: (argv.id ?? positionalId) as string | undefined,
+            all: argv.all as boolean | undefined,
+            record: argv.record as boolean | undefined,
+            force: argv.force as boolean | undefined,
+            allowEmpty: argv["allow-empty"] as boolean | undefined,
+          });
           break;
         case "sync":
           await marketSync();

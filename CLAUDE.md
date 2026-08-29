@@ -84,7 +84,7 @@ handler)`, and some as yargs command modules (`src/commands/viewport.ts` exports
 | `can propose list/generate/preview/accept/reject` | Auto-generated skill/agent proposals |
 | `can progress [cli]` | Learning progress and skill levels |
 | `can compliance` | Foundation compliance report |
-| `can market <action> [id]` | ChittyMarket artifact lifecycle (list/add/enable/disable/info/sync/push) |
+| `can market <action> [id]` | ChittyMarket artifact lifecycle (list/add/enable/disable/info/verify/sync/push; `pull` is a deprecated alias for `sync`) |
 | `can webmaster` / `can wm` | Webmaster surface operations |
 | `can surface compile\|hotload <domain>` | Cross-surface capability mold compiler & hot-loader |
 | `can scaffold <type>` | Scaffold a new artifact |
@@ -100,6 +100,74 @@ registration pointing at the same `webmasterCommand` handler, not a yargs
 `.alias()` — edit both blocks or they drift apart. `webmaster`, `wm`, and `surface`
 each opt out of strict parsing with `.strict(false)` so they can forward unknown
 flags to their handlers.
+
+`market` is the opposite case: it *does* use `.strict()` with an explicit
+`choices` array on the `action` positional, so **an action implemented in
+`marketCommand()` is unreachable unless it is also listed in `choices`** in
+`src/index.ts`. `pull` was dead for exactly this reason. The yargs handler also
+carries its own `switch` that shadows `marketCommand()` for every listed action —
+`marketCommand()` only runs via the `default` branch, so a new action needs
+wiring in *both* switches.
+
+### Artifact integrity (`can market verify`)
+
+`verify` hashes an artifact's on-disk content and compares it to `contentHash`
+in the manifest. Every field (shape, entry kind, relative path, bytes) is
+**length-prefixed** before hashing — a NUL-delimited scheme is forgeable, since
+`{a:"X", b:"Y"}` would collide with `{a:"X\0b\0Y"}`.
+
+**What it detects, and what it does not.** `contentHash` lives in
+`marketplace.json`, which sits in the same trust domain as the artifact
+directories it describes. Anyone who can write a skill directory can usually
+also write the manifest. So this detects *accidental drift and unreviewed
+change* — it is **not** a defense against a motivated attacker, and would need a
+signature over an external anchor to become one. `syncWithRepo` imports
+`contentHash` verbatim from the repo manifest for unknown ids; those baselines
+are inherited, not independently established.
+
+Rules that keep it honest, each of which had to be added after review found the
+opposite behavior shipping:
+
+- **Only `ok` passes.** `unrecorded` is a failure, not a pass — an unrecorded
+  hash proves nothing. Non-zero exit on any non-ok result.
+- **An empty check set fails.** `verify --all` against a missing or truncated
+  manifest refuses to report success; without this, deleting `marketplace.json`
+  turns any CI gate built on it into a vacuous green light. `--allow-empty`
+  opts out.
+- **`enable` gates on integrity.** Enabling is what turns on-disk content into
+  *loaded* content, so it refuses a `modified` or `missing` artifact unless
+  `--force`. Verification that no operation consults is decoration.
+  `unrecorded` deliberately warns rather than blocks: it is absence of evidence,
+  not evidence of a problem, and blocking would buy nothing — anyone who can
+  strip `contentHash` to force `unrecorded` can equally rewrite it to match
+  their payload, since both live in the same self-attested file.
+- **`--record` will not launder.** Re-recording an artifact that currently fails
+  verification requires `--force`, and prints both hashes first.
+
+Only `.git` and `.DS_Store` are excluded from hashing. `node_modules` and
+`__pycache__` are deliberately **included** — they hold executable code, and
+skipping them would let a payload dropped inside an artifact still report as
+verified. (Measured cost: 20k files / 40MB hash in ~640ms.)
+
+**Symlinks split two ways, and the distinction is load-bearing.** Root and
+interior need *opposite* policies:
+
+- **Interior** (inside the walk): links are hashed by target string and never
+  followed. That is what bounds the traversal and stops a symlink loop from
+  hanging it.
+- **Root** (`standalone.path` itself): always read *through*. Resolved with
+  `statSync` (follow) to decide tree-vs-leaf, and in the leaf case hashed as
+  the file's **bytes**, not the link target. Root link-ness is bound into the
+  digest separately, so swapping a real file for a link to identical bytes is
+  still caught.
+
+Getting either half backwards silently reports artifacts as verified while
+inspecting nothing, and this is not hypothetical — in a real manifest, 15 pathed
+artifacts are symlink→directory roots and 8 are symlink→file roots (every
+`agent-chittyagent-*`). Both halves shipped broken at different points and were
+caught only by adversarial review, so **any change here needs a test with a
+symlink root of each target type**; a naive implementation passes everything
+else.
 
 ### MCP Server
 

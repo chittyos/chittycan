@@ -24,6 +24,10 @@ import {
   syncWithRepo,
   pushToRepo,
   resolveHome,
+  normalizeArtifactPath,
+  verifyArtifact,
+  verifyPassed,
+  type VerifyResult,
   RUNTIME_MARKETPLACE,
   REPO_MARKETPLACE,
   type ArtifactType,
@@ -110,7 +114,7 @@ export async function marketAdd(opts: {
     standalone: {
       available: true,
       type: opts.type ?? "skill",
-      path: opts.artifactPath,
+      path: normalizeArtifactPath(opts.artifactPath),
     },
     ch1tty: { available: false },
     tags: opts.tags ? opts.tags.split(",").map((t) => t.trim()) : [],
@@ -134,10 +138,61 @@ export async function marketAdd(opts: {
 // enable / disable
 // ---------------------------------------------------------------------------
 
-export async function marketEnable(id: string): Promise<void> {
+export async function marketEnable(id: string, opts: { force?: boolean } = {}): Promise<void> {
   const data = loadMarketplace();
   const artifact = data.artifacts.find((a): a is MarketplaceArtifact => "id" in a && (a as MarketplaceArtifact).id === id) as MarketplaceArtifact | undefined;
   const typeHint = artifact ? ` [${artifact.type}]` : "";
+
+  // Enabling is the operation that turns on-disk content into loaded content,
+  // so it is the one that must gate on integrity. A recorded hash that no
+  // longer matches means the content changed since it was trusted — refuse.
+  if (artifact) {
+    const integrity = verifyArtifact(artifact);
+
+    // `modified` and `missing` are positive evidence that something is wrong:
+    // content changed since it was trusted, or the path is gone. Both block.
+    //
+    // `unrecorded` deliberately does NOT block. It is the absence of evidence,
+    // not evidence of a problem, and blocking on it would not buy security:
+    // contentHash is self-attested and lives in the same file as the artifact
+    // record, so anyone who can strip the hash to force `unrecorded` can just
+    // as easily rewrite it to match their payload. Blocking would add friction
+    // for every never-recorded artifact while closing neither path. It warns.
+    //
+    // `unpathed` blocks only when a contentHash was already recorded: for
+    // agent/hook artifacts, setEnabled()'s toggle falls back to the global
+    // agents/hooks directory when standalone.path is empty, so a baseline
+    // recorded against one path and then cleared would otherwise activate
+    // unverified content from that fallback without ever failing closed.
+    const blocking =
+      integrity.status === "modified" ||
+      integrity.status === "missing" ||
+      (integrity.status === "unpathed" && !!artifact.contentHash);
+
+    if (blocking && !opts.force) {
+      console.log(chalk.red(`❌ Refusing to enable ${id}: ${integrity.detail}`));
+      if (integrity.expected) console.log(chalk.dim(`   recorded: sha256:${integrity.expected}`));
+      if (integrity.actual) console.log(chalk.dim(`   on disk:  sha256:${integrity.actual}`));
+      console.log(chalk.dim(`\n   Review the change, then re-record with ${chalk.white(`can market verify ${id} --record`)},`));
+      console.log(chalk.dim(`   or enable anyway with ${chalk.white("--force")}.\n`));
+      process.exitCode = 1;
+      return;
+    }
+    if (blocking && opts.force) {
+      console.log(chalk.yellow(`⚠️  ${id} fails verification (${integrity.status}) — enabling anyway because --force was given.`));
+    }
+    if (
+      integrity.status === "unrecorded" ||
+      (integrity.status === "unpathed" && !artifact.contentHash)
+    ) {
+      console.log(chalk.yellow(`⚠️  ${id} has no recorded hash — enabling unverified content.`));
+      if (integrity.status === "unpathed") {
+        console.log(chalk.dim(`   No standalone.path declared — falling back to the global ${artifact.type} directory.`));
+      } else {
+        console.log(chalk.dim(`   Establish a baseline with ${chalk.white(`can market verify ${id} --record`)}.`));
+      }
+    }
+  }
 
   const result = setEnabled(data, id, true);
   if (!result.ok) {
@@ -200,7 +255,161 @@ export async function marketInfo(id: string): Promise<void> {
   if (resolvedPath) {
     console.log(`  Path:        ${resolvedPath}`);
   }
+
+  const result = verifyArtifact(artifact);
+  console.log(`  Integrity:   ${formatVerifyStatus(result)}`);
+  if (result.expected) console.log(chalk.dim(`  Recorded:    sha256:${result.expected}`));
+  if (result.actual && result.actual !== result.expected) {
+    console.log(chalk.dim(`  On disk:     sha256:${result.actual}`));
+  }
   console.log();
+}
+
+// ---------------------------------------------------------------------------
+// verify
+// ---------------------------------------------------------------------------
+
+function formatVerifyStatus(result: VerifyResult): string {
+  switch (result.status) {
+    case "ok":
+      return chalk.green(`verified (${result.detail})`);
+    case "modified":
+      return chalk.red(`MODIFIED — ${result.detail}`);
+    case "unrecorded":
+      return chalk.yellow(`unrecorded — ${result.detail}`);
+    case "missing":
+      return chalk.red(`missing — ${result.detail}`);
+    case "unpathed":
+      return chalk.dim(`n/a — ${result.detail}`);
+  }
+}
+
+/**
+ * Verify artifact content against recorded SHA-256 hashes.
+ *
+ * Fails closed: exits non-zero unless every checked artifact reports `ok`, so
+ * an unrecorded or missing artifact is a failure, not a silent pass.
+ */
+export async function marketVerify(opts: {
+  id?: string;
+  all?: boolean;
+  record?: boolean;
+  force?: boolean;
+  allowEmpty?: boolean;
+}): Promise<void> {
+  const data = loadMarketplace();
+
+  let targets;
+  if (opts.id) {
+    const artifact = findArtifact(data, opts.id);
+    if (!artifact) {
+      console.log(chalk.red(`❌ Not found: ${opts.id}`));
+      process.exitCode = 1;
+      return;
+    }
+    targets = [artifact];
+  } else if (opts.all) {
+    targets = realArtifacts(data);
+  } else {
+    console.log(chalk.red("❌ Specify an artifact id or --all"));
+    console.log(chalk.dim("   Example: can market verify skill-market"));
+    console.log(chalk.dim("            can market verify --all"));
+    process.exitCode = 1;
+    return;
+  }
+
+  // An empty check set is not a pass. Without this, deleting or truncating
+  // marketplace.json turns `verify --all` into a vacuous green light.
+  if (targets.length === 0) {
+    if (opts.allowEmpty) {
+      console.log(chalk.yellow("⚠️  No artifacts to verify — passing because --allow-empty was given."));
+      console.log(chalk.dim(`   Manifest: ${RUNTIME_MARKETPLACE}`));
+      return;
+    }
+    console.log(chalk.red("❌ No artifacts to verify — refusing to report success on an empty set."));
+    console.log(chalk.dim(`   Manifest: ${RUNTIME_MARKETPLACE}`));
+    console.log(chalk.dim("   Pass --allow-empty if an empty manifest is genuinely expected."));
+    process.exitCode = 1;
+    return;
+  }
+
+  if (opts.record) {
+    // Hash every target exactly once and reuse that result for both the
+    // laundering check below and the recording loop further down. Hashing
+    // separately for each — verify first, then recordArtifactHash() again
+    // per target — leaves a window between the two passes (widest for
+    // --all, which verifies every target before recording any) where content
+    // changed after the check could be adopted as the trusted baseline
+    // without ever having been checked itself.
+    const preflight = targets.map((artifact) => ({ artifact, result: verifyArtifact(artifact) }));
+
+    // Re-recording an artifact that currently fails verification would silently
+    // adopt tampered content as trusted. Require --force to say so out loud.
+    const laundering = preflight.filter(({ result }) => result.status === "modified");
+
+    if (laundering.length > 0 && !opts.force) {
+      console.log(chalk.red(`❌ Refusing to re-record ${laundering.length} artifact(s) that currently fail verification:\n`));
+      for (const { result: r } of laundering) {
+        console.log(`  ${r.id.padEnd(38)} ${chalk.red("MODIFIED")}`);
+        console.log(chalk.dim(`    recorded: sha256:${r.expected}`));
+        console.log(chalk.dim(`    on disk:  sha256:${r.actual}`));
+      }
+      console.log(chalk.dim("\n   Inspect the diff first. Re-record anyway with --force.\n"));
+      process.exitCode = 1;
+      return;
+    }
+
+    let recorded = 0;
+    for (const { artifact, result } of preflight) {
+      if (!result.actual) {
+        console.log(chalk.red(`❌ cannot hash ${artifact.id}: path missing or undeclared`));
+        process.exitCode = 1;
+        continue;
+      }
+      // --force reaches this loop without ever going through the printout
+      // above, so a replaced baseline must be shown here instead — otherwise
+      // the previously-trusted hash is overwritten without appearing in the
+      // command output anywhere.
+      if (artifact.contentHash && artifact.contentHash !== result.actual) {
+        console.log(
+          chalk.yellow(`   replacing sha256:${artifact.contentHash.slice(0, 16)}…`) +
+            chalk.dim(` -> sha256:${result.actual.slice(0, 16)}…`)
+        );
+      }
+      artifact.contentHash = result.actual;
+      recorded++;
+      console.log(chalk.green(`✅ Recorded ${artifact.id}`) + chalk.dim(` sha256:${result.actual.slice(0, 16)}…`));
+    }
+    if (recorded > 0) saveMarketplace(data);
+    console.log(chalk.dim(`\n   Recorded ${recorded}/${targets.length} baseline hash(es).\n`));
+    return;
+  }
+
+  console.log(chalk.cyan(`\n🔍 Verifying ${targets.length} artifact(s)...\n`));
+
+  const results = targets.map(verifyArtifact);
+  const failures = results.filter((r) => !verifyPassed(r));
+
+  for (const result of results) {
+    // On --all, stay quiet about passes so failures are not buried.
+    if (opts.all && verifyPassed(result)) continue;
+    console.log(`  ${result.id.padEnd(38)} ${formatVerifyStatus(result)}`);
+  }
+
+  const tally = (s: string) => results.filter((r) => r.status === s).length;
+  console.log(
+    chalk.dim(
+      `\n  ${tally("ok")} verified  |  ${tally("modified")} modified  |  ` +
+        `${tally("unrecorded")} unrecorded  |  ${tally("missing")} missing  |  ${tally("unpathed")} unpathed\n`
+    )
+  );
+
+  if (failures.length > 0) {
+    console.log(chalk.red(`❌ ${failures.length} artifact(s) failed verification.`));
+    process.exitCode = 1;
+  } else {
+    console.log(chalk.green(`✅ All ${results.length} artifact(s) verified.`));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -231,20 +440,25 @@ export async function marketPush(message?: string): Promise<void> {
 
   const result = pushToRepo(message);
 
-  if (result.error && result.pushed === 0) {
+  if (result.error && result.pushed === 0 && result.updated === 0) {
     console.log(chalk.red(`❌ ${result.error}`));
     return;
   }
 
-  if (result.pushed === 0) {
+  if (result.pushed === 0 && result.updated === 0) {
     console.log(chalk.green("✅ Repo already up to date. Nothing to push."));
     return;
   }
 
+  const summary = [
+    result.pushed > 0 ? `${result.pushed} new artifact(s)` : null,
+    result.updated > 0 ? `${result.updated} updated hash(es)` : null,
+  ].filter(Boolean).join(", ");
+
   if (result.committed) {
-    console.log(chalk.green(`✅ Pushed ${result.pushed} new artifact(s) and committed to chittymarket repo.`));
+    console.log(chalk.green(`✅ Pushed ${summary} and committed to chittymarket repo.`));
   } else {
-    console.log(chalk.yellow(`⚠️  Wrote ${result.pushed} artifact(s) to repo marketplace.json but git commit failed.`));
+    console.log(chalk.yellow(`⚠️  Wrote ${summary} to repo marketplace.json but git commit failed.`));
     if (result.error) console.log(chalk.dim(`   ${result.error}`));
     console.log(chalk.dim(`   Manually commit: cd ${path.dirname(REPO_MARKETPLACE)} && git add marketplace.json && git commit`));
   }
@@ -286,7 +500,7 @@ export async function marketCommand(
 
     case "enable":
       if (!opts.id) { console.log(chalk.red("❌ Specify an artifact id")); return; }
-      return marketEnable(opts.id as string);
+      return marketEnable(opts.id as string, { force: opts.force as boolean | undefined });
 
     case "disable":
       if (!opts.id) { console.log(chalk.red("❌ Specify an artifact id")); return; }
@@ -295,6 +509,15 @@ export async function marketCommand(
     case "info":
       if (!opts.id) { console.log(chalk.red("❌ Specify an artifact id")); return; }
       return marketInfo(opts.id as string);
+
+    case "verify":
+      return marketVerify({
+        id: opts.id as string | undefined,
+        all: opts.all as boolean | undefined,
+        record: opts.record as boolean | undefined,
+        force: opts.force as boolean | undefined,
+        allowEmpty: opts["allow-empty"] as boolean | undefined,
+      });
 
     case "sync":
       return marketSync();
@@ -309,6 +532,7 @@ export async function marketCommand(
 
     default:
       console.log(chalk.red(`❌ Unknown market action: ${action}`));
-      console.log(chalk.dim("   Actions: list, add, enable, disable, info, sync, push"));
+      console.log(chalk.dim("   Actions: list, add, enable, disable, info, verify, sync, push"));
+      process.exitCode = 1;
   }
 }
