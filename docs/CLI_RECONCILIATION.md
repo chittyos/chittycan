@@ -486,7 +486,7 @@ The governor returns `hold` rather than guessing on each of these.
 | E3 | Is there a replacement installer endpoint elsewhere? | If yes, `chittyos-get/` is `retire`, not `hold` | ChittyRegistry / `/helper` |
 | E4 | Is there an already-approved canonical legal/evidence route? | Without it the non-repudiation gate cannot be cleared and the evidence surface stays frozen | Operator |
 | E5 | Which package owns the `chitty` bin, and which owns `chittyos`? | Cannot resolve the collision without an owner decision | Operator |
-| E6 | Does anything depend on `@chittyos/cli@2.1.2` from npm? | Retirement of an npm-published package with live dependents is a different operation than archiving a repo. **Attempted 2026-09-05 and failed**: the npm search API does not support a `depends:` qualifier and returned an unfiltered 335,939-result set — no dependent list was obtained. Needs the npm dependents page or a registry crawl | npm |
+| E6 | Does anything depend on `@chittyos/cli@2.1.2` from npm? | Retirement of an npm-published package with live consumers is a different operation than archiving a repo. **Partially answered 2026-09-08 via `chittyagent-npm`** (see §6): `@chittyos/cli` took **27 downloads** in the last month vs `chittycan`'s **209**. Non-zero, so it is not dead — but download counts are not a dependent list, and a direct dependents enumeration is still missing (`chittyagent-npm` has no dependents tool; the npm search API has no `depends:` qualifier) | npm / chittyagent-npm |
 | E7 | Who owns `capability.chittyos-developer-cli`? | Every decision above has `"owner": "unassigned"`; a capability with no owner cannot be governed | Operator |
 
 ## 5. What was NOT done
@@ -499,3 +499,55 @@ The governor returns `hold` rather than guessing on each of these.
 - The `chitty.js` `--yes` auth bypass was **not** patched — the repo is a retirement candidate
   and patching it would contradict that, but the defect is live on npm and is recorded as its
   own queue item so it is not lost either way.
+
+---
+
+## 6. Addendum — `chittyagent-npm` (discovery miss, corrected 2026-09-08)
+
+**I missed this in the first pass.** The npm questions above (E6, and `mig_20260905_chittycan_publish`)
+have an owning service, and I answered them with raw `curl` against `registry.npmjs.org` instead of
+asking who owns the capability first. That is exactly the discovery-first failure the ecosystem rules
+exist to prevent, and it produced one wrong result (the 335,939-row unfiltered search).
+
+Live record, ChittyRegistry `/api/v1/tools`, checked 2026-09-08:
+
+```
+name:      chittyagent-npm
+subtype:   service
+version:   0.1.0
+endpoints: https://npm.chitty.cc/{health, api/v1/status, mcp}
+status:    active · health: healthy (last check 2026-09-08T09:00Z)
+auth_mode: anonymous
+tools:     package_info · package_versions · dist_tags · download_stats ·
+           audit_bulk · search · publish_preflight · status · describe
+```
+
+### What it changes for this analysis
+
+- **E6 moves from "failed" to "partially answered."** Real figures, `download_stats`, last month
+  (2026-08-08 → 2026-09-06): `chittycan` **209**, `@chittyos/cli` **27**. `@chittyos/cli` has live
+  consumers; retirement is a deprecation-and-migration operation, not a quiet archive. Still not a
+  dependents *list* — the service has no dependents tool.
+- **It does NOT unblock `mig_20260905_chittycan_publish`.** Its own registry description is explicit:
+  *"Publish is guidance-only; no token handling."* `publish_preflight` confirmed the state I already
+  had (`chittycan` latest `0.5.0`, proposed `0.6.1` free, no version conflict) but cannot authenticate
+  or publish. The credential step still routes through ChittyConnect. The queue item stays `blocked`.
+
+### Three defects in `chittyagent-npm` itself, found while using it
+
+1. **Registered twice.** Two active records, same `name`, different ChittyIDs
+   (`03-1-USA-4665-T-2607-1-36` and `03-1-USA-5363-T-2607-1-47`), registered 61 minutes apart on
+   2026-07-13, same endpoints, different descriptions. This is the *same duplicate-canonical-identity
+   defect* this document catalogues for `@chittyos/cli` — one capability, two registry rows, neither
+   marked canonical.
+2. **Stale 1Password guidance, live in output today.** Every `publish_preflight` response ends with
+   *"an automation token from 1Password"*. The 1Password lane is retired ecosystem-wide (`op account
+   list` is empty on this host); ChittySecrets is the cold source of truth. Any agent following that
+   checklist is sent down a dead path.
+3. **`additionalProperties: false` is not enforced.** Passing `version` instead of the schema's
+   `proposed_version` returned `200` with `"proposed_version": null` and a checklist reading
+   *"No proposed version supplied"* — a plausible, wrong answer instead of a validation error. A
+   caller that typos the argument gets a silent downgrade, not a failure.
+
+None of these are chittycan's to fix; they are filed here because they were found in the course of
+this analysis and each is a live defect on a healthy, registered service.
