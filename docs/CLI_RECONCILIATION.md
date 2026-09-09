@@ -551,3 +551,74 @@ tools:     package_info · package_versions · dist_tags · download_stats ·
 
 None of these are chittycan's to fix; they are filed here because they were found in the course of
 this analysis and each is a live defect on a healthy, registered service.
+
+---
+
+# CORRECTION — 2026-09-09
+
+**Findings 6 and 7 above are wrong about what these repositories contain, and the decision
+log's rationale for `chittyos-cli` rests on that error.** Re-verified against git, not
+against a working directory.
+
+## What is actually in the repos
+
+| Repo | Tracked files | Commits | Code ever committed? |
+|---|---|---|---|
+| `CHITTYOS/chittycli` | **4** — `CHARTER.md`, `CHITTY.md`, `CLAUDE.md`, `CODEOWNERS` | 4, all governance scaffolding | **never** |
+| `CHITTYOS/chittyos-cli` | **4** on `main` (8 on `automation/governance-baseline`) | 6, all governance scaffolding | **never** |
+
+```
+$ git -C chittyos-cli log --all --diff-filter=A --name-only -- '*chitty.js' '*package.json' 'chittyos-get/*'
+(no output)
+```
+
+No `chitty.js`, no `chittyos-get/`, no `package.json` — in any commit, on any branch, in
+either repo. `chittyos-cli`'s six commits are: CODEOWNERS, a CI governance baseline, three
+canonical-doc scaffolds, and a chittysecrets migration touching those docs. The local
+working tree holds two untracked files (`SECURITY.md`, `schema.json`) and nothing else.
+
+## The specific claims that do not hold
+
+- **Finding 6** — "Root `package.json` is committed to git **as a symlink** (mode `120000`,
+  blob `2f4e10f`)". No `package.json` exists in any commit. The repo therefore does not
+  "fail to build on any machine"; it has nothing to build.
+- **Finding 7 / decision log `dec_20260905_chittyos_cli_retire`** — "the ID/connector
+  commands in `chitty.js` **DO work**, whereas chittycan's equivalents are dead plugin
+  metadata (Finding 9) — retiring trades working code for a declaration."
+  **There is no `chitty.js`.** Nothing is traded. This was the analysis's load-bearing
+  argument for treating the retire as risky, and it is unsupported.
+- **Finding 3** — "the untracked files are the only unique artifacts in the stub" was
+  directionally right and is the clue to the error: the analysis was evidently written
+  against a local working directory containing untracked code, not against repository
+  contents. Untracked files are not in the repo, are not on any other machine, and are not
+  what archiving preserves or destroys.
+
+## What this changes
+
+1. **The `retire` disposition for both repos stands, and its prerequisites disappear.**
+   Nothing needs reimplementing in chittycan first, because nothing exists to reimplement.
+2. **Blocking dependency 1 (chittycan publishing, Finding 8) does not gate the retire.**
+   It gates *deprecating in favour of an installable package* — but neither CLI was ever
+   published to npm (`npm view chittycli` / `chittyos-cli` → E404), so there is no npm
+   deprecation step at all. Publishing remains broken and remains worth fixing; it is not
+   on this critical path.
+3. **Blocking dependency 2 (plugin loader wiring, Finding 9) does not gate the retire
+   either.** It was only implied by the false "trades working code" claim. Finding 9 may
+   still be a real chittycan defect — it was not re-verified here — but it is independent.
+4. **Blocking dependency 3 (non-repudiation gate) is unaffected** as a principle, but has
+   no subject: `evidence-ingestion.ts` is not in either repository.
+
+## Remnant
+
+`chittyos-cli` carries **5 open dependabot PRs** (#16, #17, #18, #21, #25) against
+`1password/` and `chittyos-mcp-extension/` package manifests that exist in no commit. They
+bump dependencies in paths the repository does not contain — and `1password` is a retired
+lane regardless. Archiving makes the repo read-only and renders them unmergeable, which is
+the correct outcome.
+
+## Method note
+
+The original analysis inferred repository state from a working directory. A working
+directory is not the repository: it carries untracked files that no clone will ever see.
+Any claim of the form "repo X contains Y" should be checked with `git ls-files` /
+`git log --all --diff-filter=A`, not `ls`.
