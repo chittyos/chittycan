@@ -259,7 +259,6 @@ export const anthropicPlugin: ChittyPlugin = {
   remoteTypes: [remoteType],
   commands,
   async init(config: Config) {
-    console.log("✓ Anthropic Claude connector initialized");
   },
 };
 

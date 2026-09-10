@@ -337,7 +337,6 @@ export const openaiPlugin: ChittyPlugin = {
   remoteTypes: [remoteType],
   commands,
   async init(config: Config) {
-    console.log("✓ OpenAI connector initialized");
   },
 };
 

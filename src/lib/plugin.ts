@@ -131,23 +131,41 @@ export class PluginLoader {
    * that re-export helpers and expose no `metadata`, so they are not plugins.
    */
   private async loadBundledPlugins(): Promise<void> {
-    const bundled = [
-      () => import("../plugins/cloudflare/index.js"),
-      () => import("../plugins/linear/index.js"),
-      () => import("../plugins/neon/index.js")
+    const bundled: Array<[string, () => Promise<any>]> = [
+      ["ai", () => import("../plugins/ai/index.js")],
+      ["chittyos", () => import("../plugins/chittyos/index.js")],
+      ["cloudflare", () => import("../plugins/cloudflare/index.js")],
+      ["linear", () => import("../plugins/linear/index.js")],
+      ["neon", () => import("../plugins/neon/index.js")]
     ];
 
-    for (const load of bundled) {
+    for (const [dir, load] of bundled) {
+      let candidates: unknown[];
       try {
         const mod: any = await load();
-        const plugin: ChittyPlugin = mod.default || mod;
-        if (!this.isValidPlugin(plugin)) continue;
-        if (this.plugins.has(plugin.metadata.name)) continue; // a configured extension wins
-        this.plugins.set(plugin.metadata.name, plugin);
-        if (plugin.init) await plugin.init(this.config);
+        const exported = mod.default ?? mod;
+        // ai/ and chittyos/ export an ARRAY of plugins; the rest export one.
+        candidates = Array.isArray(exported) ? exported : [exported];
       } catch (error: any) {
-        // Never let a bundled plugin break every command. Report, do not throw.
-        console.warn(`[chitty] Failed to load bundled plugin: ${error.message}`);
+        console.warn(`[chitty] Bundled plugin "${dir}" failed to import: ${error.message}`);
+        continue;
+      }
+
+      for (const candidate of candidates) {
+        const plugin = candidate as ChittyPlugin;
+        if (!this.isValidPlugin(plugin)) {
+          console.warn(`[chitty] Bundled plugin in "${dir}" is malformed; skipping.`);
+          continue;
+        }
+        const name = plugin.metadata.name;
+        try {
+          // init() BEFORE registering. Registering first left a live, uninitialised plugin
+          // whose handlers ran against state init() never built.
+          if (plugin.init) await plugin.init(this.config);
+          this.plugins.set(name, plugin);
+        } catch (error: any) {
+          console.warn(`[chitty] Bundled plugin "${name}" (${dir}) failed to initialise, and will not be registered: ${error.message}`);
+        }
       }
     }
   }

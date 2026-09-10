@@ -1252,7 +1252,30 @@ const cli = yargs(args)
 // Plugin commands must be registered BEFORE .strict(), which rejects anything unknown.
 // loadAll() populated the loader above; without this call getAllCommands() was never
 // consumed and every plugin-supplied command was unreachable.
-registerPluginCommands(cli, pluginLoader.getAllCommands(), config);
+try {
+  // yargs exposes the registered command list only through internal methods, which are
+  // untyped. If that shape ever changes this must fail LOUDLY rather than silently
+  // permitting a plugin to shadow a builtin.
+  const internal = (cli as any).getInternalMethods?.()?.getCommandInstance?.();
+  const builtinNames = new Set<string>(internal?.getCommands?.() ?? []);
+  if (builtinNames.size === 0) {
+    console.warn("[chitty] Could not enumerate built-in commands; plugin shadowing checks are disabled.");
+  }
+  const pluginCommands = pluginLoader.getAllCommands().filter(cmd => {
+    const head = typeof cmd?.name === "string" ? cmd.name.trim().split(/\s+/)[0] : "";
+    if (head && builtinNames.has(head)) {
+      // Silently shadowing `can config` / `can connect` / `can export` would let any
+      // installed extension take over a builtin, including the credential store command.
+      console.warn(`[chitty] Plugin command "${cmd.name}" would shadow the built-in "${head}"; ignoring it.`);
+      return false;
+    }
+    return true;
+  });
+  registerPluginCommands(cli, pluginCommands, config);
+} catch (error: any) {
+  // A malformed plugin must not take down every command, including --version.
+  console.warn(`[chitty] Failed to register plugin commands: ${error.message}`);
+}
 
 cli
   .strict()
