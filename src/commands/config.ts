@@ -4,6 +4,7 @@ import { loadConfig, saveConfig, getConfigPath, type NotionRemote, type GitHubRe
 import fs from "fs";
 import { execSync } from "child_process";
 import os from "os";
+import { PluginLoader, type RemoteTypeDefinition } from "../lib/plugin.js";
 
 import { installMcpConfig } from "./mcp-config.js";
 import { connectSetup } from "./connect.js";
@@ -150,6 +151,8 @@ export async function configMenu(): Promise<void> {
 }
 
 async function addRemote(cfg: Config): Promise<void> {
+  const pluginRemoteTypes = await loadPluginRemoteTypes(cfg);
+
   const { remoteType } = await inquirer.prompt([{
     type: "list",
     name: "remoteType",
@@ -164,7 +167,11 @@ async function addRemote(cfg: Config): Promise<void> {
       { name: "Notion database", value: "notion-database" },
       { name: "Notion page", value: "notion-page" },
       { name: "Notion view", value: "notion-view" },
-      { name: "GitHub project", value: "github-project" }
+      { name: "GitHub project", value: "github-project" },
+      ...pluginRemoteTypes.map(rt => ({
+        name: `${rt.name ?? rt.type}${rt.description ? ` — ${rt.description}` : ""} (plugin)`,
+        value: rt.type
+      }))
     ]
   }]);
 
@@ -184,7 +191,91 @@ async function addRemote(cfg: Config): Promise<void> {
     await addNotionRemote(cfg, remoteType);
   } else if (remoteType === "github-project") {
     await addGitHubRemote(cfg);
+  } else {
+    const definition = pluginRemoteTypes.find(rt => rt.type === remoteType);
+    if (definition) await addPluginRemote(cfg, definition);
   }
+}
+
+/**
+ * Remote types contributed by plugins.
+ *
+ * getAllRemoteTypes() existed but had no callers, so a plugin could declare a remote type
+ * and `can config` would never offer it — making every command that depends on that remote
+ * unreachable in practice.
+ */
+async function loadPluginRemoteTypes(cfg: Config): Promise<RemoteTypeDefinition[]> {
+  try {
+    const loader = new PluginLoader(cfg);
+    await loader.loadAll();
+    const seen = new Set<string>();
+    // Builtin handlers win: a plugin must not silently replace `neon` or `cloudflare`.
+    const builtin = new Set(["ai-platform", "ssh", "mcp-server", "cloudflare", "neon",
+      "rclone", "notion-database", "notion-page", "notion-view", "github-project"]);
+    return loader.getAllRemoteTypes().filter(rt => {
+      if (!rt?.type || builtin.has(rt.type) || seen.has(rt.type)) return false;
+      seen.add(rt.type);
+      return true;
+    });
+  } catch (error: any) {
+    console.warn(`[chitty] Could not load plugin remote types: ${error.message}`);
+    return [];
+  }
+}
+
+/**
+ * Prompt for a plugin-defined remote using its declared schema/configFields.
+ *
+ * Sensitive fields are NOT stored in the config file. They are masked at the prompt and
+ * recorded as an env-var reference, matching the existing `NEON_API_KEY` fallback rather
+ * than widening plaintext credential storage across every plugin. Moving these to
+ * ChittySecrets is follow-up work owned by the credential lane, not this change.
+ */
+async function addPluginRemote(cfg: Config, definition: RemoteTypeDefinition): Promise<void> {
+  const fields = definition.configFields ?? Object.entries(definition.schema ?? {}).map(
+    ([name, spec]: [string, any]) => ({
+      name,
+      description: name,
+      required: Boolean(spec?.required),
+      sensitive: /key|token|secret|password/i.test(name)
+    })
+  );
+
+  const { name } = await inquirer.prompt([{ type: "input", name: "name", message: "Remote name" }]);
+  if (!name) return;
+
+  const remote: Record<string, any> = { type: definition.type };
+  for (const field of fields) {
+    const sensitive = (field as any).sensitive === true;
+    const envVar = `${definition.type.replace(/[^a-z0-9]+/gi, "_").toUpperCase()}_${field.name.replace(/[^a-z0-9]+/gi, "_").toUpperCase()}`;
+    const answer = await inquirer.prompt([{
+      type: sensitive ? "password" : "input",
+      name: "value",
+      message: sensitive
+        ? `${field.description} (leave blank to read ${envVar} at run time)`
+        : `${field.description}${field.required ? "" : " (optional)"}`,
+      default: (field as any).default
+    }]);
+    if (!answer.value) continue;
+    // A supplied secret is referenced, never written to the config file.
+    remote[field.name] = sensitive ? `\${${envVar}}` : answer.value;
+    if (sensitive) {
+      console.log(`  Set ${envVar} in your environment; the value was not written to the config.`);
+    }
+  }
+
+  if (definition.validate) {
+    const verdict = definition.validate(remote);
+    if (verdict !== true) {
+      console.error(`[chitty] Invalid ${definition.type} remote: ${typeof verdict === "string" ? verdict : "validation failed"}`);
+      return;
+    }
+  }
+
+  cfg.remotes = cfg.remotes || {};
+  (cfg.remotes as any)[name] = remote;
+  saveConfig(cfg);
+  console.log(`Added ${definition.type} remote "${name}"`);
 }
 
 async function addNotionRemote(cfg: Config, type: string): Promise<void> {

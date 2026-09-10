@@ -153,6 +153,17 @@ describe("PluginLoader bundled plugins — real modules, no mocks", () => {
     expect(names.length).toBeGreaterThanOrEqual(16);
   });
 
+  it("exposes remote types through getAllRemoteTypes, which had ZERO callers", async () => {
+    // Without this, `can config` cannot create a neon-project remote, so every neon
+    // command fails with "Remote db-prod not found" and the plugin is unusable
+    // end-to-end even though its commands are registered.
+    const loader = new PluginLoader({} as any);
+    await loader.loadAll();
+    const types = loader.getAllRemoteTypes().map(rt => rt.type);
+    expect(types).toEqual(expect.arrayContaining(["neon-project", "cloudflare-account", "linear-workspace"]));
+    expect(types.length).toBeGreaterThanOrEqual(16);
+  });
+
   it("exposes their commands through getAllCommands, which nothing used to call", async () => {
     const loader = new PluginLoader({} as any);
     await loader.loadAll();
