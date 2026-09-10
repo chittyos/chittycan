@@ -191,7 +191,6 @@ const CloudflarePlugin: ChittyPlugin = {
   ],
 
   async init(config: Config) {
-    console.log("[chitty] Cloudflare extension loaded");
   },
 };
 

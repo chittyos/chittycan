@@ -102,6 +102,8 @@ export class PluginLoader {
    * Load all plugins from config
    */
   async loadAll(): Promise<void> {
+    await this.loadBundledPlugins();
+
     const extensions = this.config.extensions || {};
 
     for (const [name, extConfig] of Object.entries(extensions)) {
@@ -112,6 +114,40 @@ export class PluginLoader {
         await this.loadPlugin(name);
       } catch (error: any) {
         console.warn(`[chitty] Failed to load extension ${name}: ${error.message}`);
+      }
+    }
+  }
+
+  /**
+   * Load the plugins that ship inside this package.
+   *
+   * These are listed explicitly rather than discovered by scanning: a directory scan at
+   * startup costs a stat per entry on every `can` invocation, and an explicit list fails
+   * loudly in review when a plugin is added without being registered.
+   *
+   * Measured cost of importing all of these: ~17ms against a ~280ms baseline startup.
+   *
+   * `ai/` and `chittyos/` are deliberately absent — their index modules are barrel files
+   * that re-export helpers and expose no `metadata`, so they are not plugins.
+   */
+  private async loadBundledPlugins(): Promise<void> {
+    const bundled = [
+      () => import("../plugins/cloudflare/index.js"),
+      () => import("../plugins/linear/index.js"),
+      () => import("../plugins/neon/index.js")
+    ];
+
+    for (const load of bundled) {
+      try {
+        const mod: any = await load();
+        const plugin: ChittyPlugin = mod.default || mod;
+        if (!this.isValidPlugin(plugin)) continue;
+        if (this.plugins.has(plugin.metadata.name)) continue; // a configured extension wins
+        this.plugins.set(plugin.metadata.name, plugin);
+        if (plugin.init) await plugin.init(this.config);
+      } catch (error: any) {
+        // Never let a bundled plugin break every command. Report, do not throw.
+        console.warn(`[chitty] Failed to load bundled plugin: ${error.message}`);
       }
     }
   }

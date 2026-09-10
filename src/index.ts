@@ -22,6 +22,7 @@ import { installZsh, uninstallZsh } from "./commands/hook.js";
 import { syncSetup, syncRun, syncStatus } from "./commands/sync.js";
 import { listExtensions, enableExtension, disableExtension, installExtension } from "./commands/extension.js";
 import { PluginLoader } from "./lib/plugin.js";
+import { registerPluginCommands } from "./lib/plugin-commands.js";
 import { doctor } from "./commands/doctor.js";
 import { briefCommand } from "./commands/brief.js";
 import { chittyCommand } from "./commands/chitty.js";
@@ -123,7 +124,7 @@ if (firstArg && firstArg in CLI_CONFIGS) {
   process.exit(0);
 }
 
-yargs(args)
+const cli = yargs(args)
   .scriptName("can")
   .usage("$0 <command> [options]")
   .command(
@@ -1246,6 +1247,14 @@ yargs(args)
     process.exit(1);
   })
   .demandCommand(1, "You must provide a command")
+  ;
+
+// Plugin commands must be registered BEFORE .strict(), which rejects anything unknown.
+// loadAll() populated the loader above; without this call getAllCommands() was never
+// consumed and every plugin-supplied command was unreachable.
+registerPluginCommands(cli, pluginLoader.getAllCommands(), config);
+
+cli
   .strict()
   .help()
   .alias("h", "help")

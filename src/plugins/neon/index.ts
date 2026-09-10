@@ -224,7 +224,6 @@ const NeonPlugin: ChittyPlugin = {
   ],
 
   async init(config: Config) {
-    console.log("[chitty] Neon extension loaded");
   },
 };
 
