@@ -360,7 +360,6 @@ export const chittyconnectPlugin: ChittyPlugin = {
   remoteTypes: [remoteType],
   commands,
   async init(config: Config) {
-    console.log("✓ ChittyConnect plugin initialized");
   },
 };
 

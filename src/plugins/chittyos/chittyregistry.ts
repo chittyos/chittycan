@@ -373,7 +373,6 @@ export const chittyregistryPlugin: ChittyPlugin = {
   remoteTypes: [remoteType],
   commands,
   async init(config: Config) {
-    console.log("✓ ChittyRegistry plugin initialized");
   },
 };
 

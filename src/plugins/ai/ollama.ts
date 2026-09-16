@@ -292,7 +292,6 @@ export const ollamaPlugin: ChittyPlugin = {
   remoteTypes: [remoteType],
   commands,
   async init(config: Config) {
-    console.log("✓ Ollama local models connector initialized");
   },
 };
 

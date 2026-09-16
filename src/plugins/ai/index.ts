@@ -52,7 +52,6 @@ export const aiPlugins: ChittyPlugin[] = [
 
 // Export convenience loader
 export async function loadAIPlugins() {
-  console.log("Loading AI platform connectors...");
   console.log("  ✓ OpenAI - GPT-4, GPT-3.5, DALL-E");
   console.log("  ✓ Anthropic - Claude Sonnet, Opus, Haiku");
   console.log("  ✓ Ollama - Local models (privacy-first)");

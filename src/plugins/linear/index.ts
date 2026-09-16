@@ -266,7 +266,6 @@ const LinearPlugin: ChittyPlugin = {
   ],
 
   async init(config: Config) {
-    console.log("[chitty] Linear extension loaded");
   },
 };
 
