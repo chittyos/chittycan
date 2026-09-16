@@ -21,7 +21,7 @@ import { checkpoint, listCheckpoints } from "./commands/checkpoint.js";
 import { installZsh, uninstallZsh } from "./commands/hook.js";
 import { syncSetup, syncRun, syncStatus } from "./commands/sync.js";
 import { listExtensions, enableExtension, disableExtension, installExtension } from "./commands/extension.js";
-import { PluginLoader } from "./lib/plugin.js";
+import { PluginLoader, resolvePluginRemoteEnvironment } from "./lib/plugin.js";
 import { registerPluginCommands } from "./lib/plugin-commands.js";
 import { doctor } from "./commands/doctor.js";
 import { briefCommand } from "./commands/brief.js";
@@ -108,6 +108,7 @@ const CLI_VERSION: string = (() => {
 const config = (await import("./lib/config.js")).loadConfig();
 const pluginLoader = new PluginLoader(config);
 await pluginLoader.loadAll();
+resolvePluginRemoteEnvironment(config, pluginLoader.getAllRemoteTypes());
 
 // Check for direct CLI routing (can gh ... instead of can chitty gh ...)
 const args = hideBin(process.argv);
@@ -132,7 +133,7 @@ const cli = yargs(args)
     "Interactive configuration menu (rclone-style)",
     () => {},
     async () => {
-      await configMenu();
+      await configMenu(pluginLoader);
     }
   )
   .command(
@@ -1257,9 +1258,13 @@ try {
   // untyped. If that shape ever changes this must fail LOUDLY rather than silently
   // permitting a plugin to shadow a builtin.
   const internal = (cli as any).getInternalMethods?.()?.getCommandInstance?.();
-  const builtinNames = new Set<string>(internal?.getCommands?.() ?? []);
-  if (builtinNames.size === 0) {
-    console.warn("[chitty] Could not enumerate built-in commands; plugin shadowing checks are disabled.");
+  const registeredBuiltinNames: string[] = internal?.getCommands?.() ?? [];
+  const builtinNames = new Set<string>([
+    ...registeredBuiltinNames,
+    ...Object.keys(CLI_CONFIGS),
+  ]);
+  if (registeredBuiltinNames.length === 0) {
+    console.warn("[chitty] Could not enumerate built-in commands; only direct CLI routes are protected from plugin shadowing.");
   }
   const pluginCommands = pluginLoader.getAllCommands().filter(cmd => {
     const head = typeof cmd?.name === "string" ? cmd.name.trim().split(/\s+/)[0] : "";

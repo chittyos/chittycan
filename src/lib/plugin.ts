@@ -28,6 +28,69 @@ export interface RemoteTypeDefinition {
   validate?: (config: any) => boolean | string;
 }
 
+export interface RemoteConfigField {
+  name: string;
+  description: string;
+  required: boolean;
+  sensitive?: boolean;
+  default?: any;
+}
+
+/**
+ * Return a plugin remote's prompt fields in one consistent shape.
+ *
+ * Older plugins expose only `schema`, so preserve the existing credential-name
+ * inference for them while allowing newer plugins to declare sensitivity explicitly.
+ */
+export function getRemoteConfigFields(definition: RemoteTypeDefinition): RemoteConfigField[] {
+  return definition.configFields ?? Object.entries(definition.schema ?? {}).map(
+    ([name, spec]: [string, any]) => ({
+      name,
+      description: name,
+      required: Boolean(spec?.required),
+      sensitive: spec?.sensitive === true || /key|token|secret|password/i.test(name),
+      default: spec?.default,
+    })
+  );
+}
+
+const ENV_REFERENCE = /^\$\{([A-Z_][A-Z0-9_]*)\}$/;
+
+/** Resolve declared sensitive fields in memory without changing persisted config. */
+export function resolveSensitiveRemoteFields<T extends Record<string, any>>(
+  remote: T,
+  definition: RemoteTypeDefinition,
+  env: NodeJS.ProcessEnv = process.env,
+): T {
+  for (const field of getRemoteConfigFields(definition)) {
+    if (!field.sensitive) continue;
+
+    const value = remote[field.name];
+    if (typeof value !== "string") continue;
+
+    const match = ENV_REFERENCE.exec(value);
+    if (match && env[match[1]] !== undefined) {
+      (remote as Record<string, any>)[field.name] = env[match[1]];
+    }
+  }
+  return remote;
+}
+
+/** Resolve sensitive plugin remote references after config load and before dispatch. */
+export function resolvePluginRemoteEnvironment(
+  config: Config,
+  definitions: RemoteTypeDefinition[],
+  env: NodeJS.ProcessEnv = process.env,
+): Config {
+  const definitionsByType = new Map(definitions.map(definition => [definition.type, definition]));
+  for (const remote of Object.values(config.remotes ?? {})) {
+    const candidate = remote as unknown as Record<string, any>;
+    const definition = definitionsByType.get(candidate.type);
+    if (definition) resolveSensitiveRemoteFields(candidate, definition, env);
+  }
+  return config;
+}
+
 export interface CommandDefinition {
   name: string;
   description: string;

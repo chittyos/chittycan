@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { buildCommandTree, registerPluginCommands } from "../src/lib/plugin-commands.js";
-import { PluginLoader } from "../src/lib/plugin.js";
+import {
+  PluginLoader,
+  resolvePluginRemoteEnvironment,
+  resolveSensitiveRemoteFields,
+  type RemoteTypeDefinition,
+} from "../src/lib/plugin.js";
 import type { CommandDefinition } from "../src/lib/plugin.js";
 
 const cmd = (name: string): CommandDefinition => ({ name, description: `desc ${name}`, handler: async () => {} });
@@ -170,5 +175,64 @@ describe("PluginLoader bundled plugins — real modules, no mocks", () => {
     const names = loader.getAllCommands().map(c => c.name);
     expect(names).toContain("neon branch list");
     expect(names.length).toBeGreaterThanOrEqual(8);
+  });
+});
+
+describe("plugin remote environment references", () => {
+  const definition: RemoteTypeDefinition = {
+    type: "example",
+    configFields: [
+      { name: "apiKey", description: "API key", required: true, sensitive: true },
+      { name: "baseUrl", description: "Base URL", required: false },
+      { name: "optionalToken", description: "Optional token", required: false, sensitive: true },
+    ],
+  };
+
+  it("resolves only declared sensitive fields and retains unresolved references", () => {
+    const remote = {
+      type: "example",
+      apiKey: "${EXAMPLE_API_KEY}",
+      baseUrl: "${EXAMPLE_BASE_URL}",
+      optionalToken: "${MISSING_TOKEN}",
+    };
+
+    resolveSensitiveRemoteFields(remote, definition, {
+      EXAMPLE_API_KEY: "resolved-secret",
+      EXAMPLE_BASE_URL: "https://should-not-resolve.example",
+    });
+
+    expect(remote).toEqual({
+      type: "example",
+      apiKey: "resolved-secret",
+      baseUrl: "${EXAMPLE_BASE_URL}",
+      optionalToken: "${MISSING_TOKEN}",
+    });
+  });
+
+  it("resolves sensitive fields inferred from legacy schemas across loaded config", () => {
+    const config = {
+      remotes: {
+        linear: {
+          type: "legacy",
+          apiKey: "${LINEAR_API_KEY}",
+          workspaceId: "${LINEAR_WORKSPACE_ID}",
+        },
+      },
+      nudges: { enabled: true, intervalMinutes: 45 },
+    } as any;
+    const legacyDefinition: RemoteTypeDefinition = {
+      type: "legacy",
+      schema: {
+        apiKey: { type: "string", required: true },
+        workspaceId: { type: "string", required: false },
+      },
+    };
+
+    expect(resolvePluginRemoteEnvironment(config, [legacyDefinition], {
+      LINEAR_API_KEY: "linear-secret",
+      LINEAR_WORKSPACE_ID: "workspace-id",
+    })).toBe(config);
+    expect(config.remotes.linear.apiKey).toBe("linear-secret");
+    expect(config.remotes.linear.workspaceId).toBe("${LINEAR_WORKSPACE_ID}");
   });
 });

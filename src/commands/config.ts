@@ -4,7 +4,12 @@ import { loadConfig, saveConfig, getConfigPath, type NotionRemote, type GitHubRe
 import fs from "fs";
 import { execSync } from "child_process";
 import os from "os";
-import { PluginLoader, type RemoteTypeDefinition } from "../lib/plugin.js";
+import {
+  PluginLoader,
+  getRemoteConfigFields,
+  resolveSensitiveRemoteFields,
+  type RemoteTypeDefinition,
+} from "../lib/plugin.js";
 
 import { installMcpConfig } from "./mcp-config.js";
 import { connectSetup } from "./connect.js";
@@ -50,7 +55,7 @@ export async function configSetup(): Promise<void> {
   console.log(chalk.dim("Run 'can doctor' to verify your installation."));
 }
 
-export async function configMenu(): Promise<void> {
+export async function configMenu(pluginLoader: PluginLoader): Promise<void> {
   const configPath = getConfigPath();
   const configExists = fs.existsSync(configPath);
 
@@ -102,7 +107,7 @@ export async function configMenu(): Promise<void> {
     if (!mappedAction) continue;
 
     if (mappedAction === "new") {
-      await addRemote(cfg);
+      await addRemote(cfg, pluginLoader);
       continue;
     }
 
@@ -150,8 +155,8 @@ export async function configMenu(): Promise<void> {
   console.log("Quit config");
 }
 
-async function addRemote(cfg: Config): Promise<void> {
-  const pluginRemoteTypes = await loadPluginRemoteTypes(cfg);
+async function addRemote(cfg: Config, pluginLoader: PluginLoader): Promise<void> {
+  const pluginRemoteTypes = loadPluginRemoteTypes(pluginLoader);
 
   const { remoteType } = await inquirer.prompt([{
     type: "list",
@@ -204,10 +209,8 @@ async function addRemote(cfg: Config): Promise<void> {
  * and `can config` would never offer it — making every command that depends on that remote
  * unreachable in practice.
  */
-async function loadPluginRemoteTypes(cfg: Config): Promise<RemoteTypeDefinition[]> {
+function loadPluginRemoteTypes(loader: PluginLoader): RemoteTypeDefinition[] {
   try {
-    const loader = new PluginLoader(cfg);
-    await loader.loadAll();
     const seen = new Set<string>();
     // Builtin handlers win: a plugin must not silently replace `neon` or `cloudflare`.
     const builtin = new Set(["ai-platform", "ssh", "mcp-server", "cloudflare", "neon",
@@ -232,14 +235,7 @@ async function loadPluginRemoteTypes(cfg: Config): Promise<RemoteTypeDefinition[
  * ChittySecrets is follow-up work owned by the credential lane, not this change.
  */
 async function addPluginRemote(cfg: Config, definition: RemoteTypeDefinition): Promise<void> {
-  const fields = definition.configFields ?? Object.entries(definition.schema ?? {}).map(
-    ([name, spec]: [string, any]) => ({
-      name,
-      description: name,
-      required: Boolean(spec?.required),
-      sensitive: /key|token|secret|password/i.test(name)
-    })
-  );
+  const fields = getRemoteConfigFields(definition);
 
   const { name } = await inquirer.prompt([{ type: "input", name: "name", message: "Remote name" }]);
   if (!name) return;
@@ -256,8 +252,14 @@ async function addPluginRemote(cfg: Config, definition: RemoteTypeDefinition): P
         : `${field.description}${field.required ? "" : " (optional)"}`,
       default: (field as any).default
     }]);
-    if (!answer.value) continue;
-    // A supplied secret is referenced, never written to the config file.
+    const blank = answer.value === "" || answer.value === null || answer.value === undefined;
+    if (blank && field.required && !sensitive) {
+      console.error(`[chitty] ${field.description} is required.`);
+      return;
+    }
+    if (blank && !sensitive) continue;
+    // Secrets are referenced, never written to the config file. A blank answer keeps
+    // the promised run-time lookup instead of silently dropping the field.
     remote[field.name] = sensitive ? `\${${envVar}}` : answer.value;
     if (sensitive) {
       console.log(`  Set ${envVar} in your environment; the value was not written to the config.`);
@@ -265,9 +267,15 @@ async function addPluginRemote(cfg: Config, definition: RemoteTypeDefinition): P
   }
 
   if (definition.validate) {
-    const verdict = definition.validate(remote);
-    if (verdict !== true) {
-      console.error(`[chitty] Invalid ${definition.type} remote: ${typeof verdict === "string" ? verdict : "validation failed"}`);
+    try {
+      const completedRemote = resolveSensitiveRemoteFields({ ...remote }, definition);
+      const verdict = definition.validate(completedRemote);
+      if (verdict !== true) {
+        console.error(`[chitty] Invalid ${definition.type} remote: ${typeof verdict === "string" ? verdict : "validation failed"}`);
+        return;
+      }
+    } catch (error: any) {
+      console.error(`[chitty] Invalid ${definition.type} remote: ${error?.message ?? String(error)}`);
       return;
     }
   }

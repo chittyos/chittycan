@@ -10,6 +10,7 @@ import chalk from "chalk";
 import { isChittyInstalled, proxyToChitty, showUpgradeMessage } from "./chitty-proxy.js";
 import { loadConfig } from "./config.js";
 import { configMenu } from "../commands/config.js";
+import type { PluginLoader } from "./plugin.js";
 import {
   findCommandTemplate,
   getSetupInstructions,
@@ -22,7 +23,7 @@ import {
 /**
  * Smart command execution with config awareness
  */
-export async function smartChittyCommand(args: string[]): Promise<void> {
+export async function smartChittyCommand(args: string[], pluginLoader: PluginLoader): Promise<void> {
   // First check if chitty CLI is installed
   if (!isChittyInstalled()) {
     showUpgradeMessage(args);
@@ -112,7 +113,7 @@ export async function smartChittyCommand(args: string[]): Promise<void> {
 
     if (configure) {
       // Run config menu
-      await configMenu();
+      await configMenu(pluginLoader);
 
       // Re-check after configuration
       const updatedConfig = loadConfig();
