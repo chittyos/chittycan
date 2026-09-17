@@ -36,7 +36,7 @@ export async function syncSetup(): Promise<void> {
 
   if (!notionRemotes.length || !githubRemotes.length) {
     console.log("\n[chitty] You need at least one Notion database and one GitHub project configured.");
-    console.log("  → Run: chitty config");
+    console.log("  → Run: can config");
     return;
   }
 
@@ -68,14 +68,14 @@ export async function syncSetup(): Promise<void> {
   console.log("\n[chitty] ✓ Sync configured");
   console.log(`  Notion: ${notionRemote}`);
   console.log(`  GitHub: ${githubRemote}`);
-  console.log("\n  → Run: chitty sync run");
+  console.log("\n  → Run: can sync run");
 }
 
 export async function syncRun(dryRun: boolean = false): Promise<void> {
   const cfg = loadConfig();
 
   if (!cfg.sync?.enabled || !cfg.sync.mappings?.length) {
-    console.log("[chitty] Sync not configured. Run: chitty sync setup");
+    console.log("[chitty] Sync not configured. Run: can sync setup");
     return;
   }
 
@@ -138,7 +138,7 @@ export function syncStatus(): void {
 
   if (!cfg.sync?.enabled) {
     console.log("  Status: Not configured");
-    console.log("  → Run: chitty sync setup");
+    console.log("  → Run: can sync setup");
     return;
   }
 

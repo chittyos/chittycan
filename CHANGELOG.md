@@ -5,6 +5,25 @@ All notable changes to ChittyCan will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-09-17
+
+### Fixed
+
+- Bundled plugins are now loaded and their commands registered (#166). Before this,
+  `can neon`, `can cf` and `can linear` were rejected as unknown arguments.
+- Every invocation printed `Plugin command "connect" would shadow the built-in`.
+  The chittyconnect plugin's `connect` tree could never run (`can connect` is a
+  built-in), so it is removed; the plugin still provides the `chittyconnect` remote type.
+- A missing subcommand (`can neon`) was announced as a critical crash and sent to
+  crash telemetry. Usage errors now print the message and help and exit 1; only
+  thrown errors are reported as crashes.
+- `can doctor` told users to `npm install @chitty/cloudflare @chitty/neon @chitty/linear`,
+  packages that do not exist. It now reports how many bundled plugins loaded.
+- `can ext install` printed install steps that could not work. It now says that
+  third-party extensions are not supported yet and exits 1.
+- Hints across `doctor`, `sync`, `open` and `nudge` said `chitty <cmd>`; the
+  installed binary is `can`.
+
 ## [0.6.1] - 2026-08-10
 
 ### Fixed

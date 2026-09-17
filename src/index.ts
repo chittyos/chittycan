@@ -298,7 +298,7 @@ const cli = yargs(args)
         )
         .command(
           "install <name>",
-          "Install an extension",
+          "Install a third-party extension (not yet supported)",
           (yargs) =>
             yargs.positional("name", {
               describe: "Extension name",
@@ -1232,14 +1232,18 @@ const cli = yargs(args)
   .command(wipModule as any)
   .command(hygieneModule)
   .fail((msg, err, yargs) => {
-    // Self-Healing Telemetry: log crashes for chittyagent-resolve
-    const errorMsg = (err && err.message) ? err.message : (msg || "Unknown crash");
-    try {
-      trackCommandUsage("crash", errorMsg, "", false);
-      console.log(chalk.red("\n🚨  ChittyCan experienced a critical error."));
-      console.log(chalk.dim("   (Crash payload dispatched to chittyagent-resolve for triage)\n"));
-    } catch (e) {
-      // ignore tracker errors
+    // yargs calls this for two different things: usage errors (msg only — a missing
+    // subcommand, an unknown flag) and thrown errors (err set). Only the latter is a
+    // crash; reporting `can neon` with no subcommand as a critical error was noise.
+    if (err) {
+      // Self-Healing Telemetry: log crashes for chittyagent-resolve
+      try {
+        trackCommandUsage("crash", err.message || msg || "Unknown crash", "", false);
+        console.log(chalk.red("\n🚨  ChittyCan experienced a critical error."));
+        console.log(chalk.dim("   (Crash payload dispatched to chittyagent-resolve for triage)\n"));
+      } catch (e) {
+        // ignore tracker errors
+      }
     }
 
     if (msg) console.error(msg);

@@ -3,6 +3,7 @@
  */
 
 import { loadConfig, getConfigPath } from "../lib/config.js";
+import { PluginLoader } from "../lib/plugin.js";
 import fs from "fs";
 import os from "os";
 import { execSync } from "child_process";
@@ -15,7 +16,7 @@ interface Check {
 }
 
 export async function doctor(): Promise<void> {
-  console.log("\n🔍 ChittyTracker Doctor\n");
+  console.log("\n🔍 ChittyCan Doctor\n");
 
   const checks: Check[] = [];
 
@@ -36,7 +37,7 @@ export async function doctor(): Promise<void> {
     name: "Config file",
     status: configExists ? "✓" : "⚠",
     message: configExists ? configPath : "Not found",
-    fix: !configExists ? "Run: chitty config" : undefined
+    fix: !configExists ? "Run: can config" : undefined
   });
 
   // Load config if exists
@@ -54,7 +55,7 @@ export async function doctor(): Promise<void> {
         name: "Config valid",
         status: "✗",
         message: `Parse error: ${error.message}`,
-        fix: `Edit ${configPath} or delete and run: chitty config`
+        fix: `Edit ${configPath} or delete and run: can config`
       });
     }
   }
@@ -65,7 +66,7 @@ export async function doctor(): Promise<void> {
     name: "Remotes",
     status: remoteCount > 0 ? "✓" : "⚠",
     message: `${remoteCount} configured`,
-    fix: remoteCount === 0 ? "Run: chitty config → New remote" : undefined
+    fix: remoteCount === 0 ? "Run: can config → New remote" : undefined
   });
 
   // Shell hooks
@@ -88,17 +89,19 @@ export async function doctor(): Promise<void> {
     name: "Shell hooks",
     status: hooksInstalled ? "✓" : "⚠",
     message: hooksInstalled ? `Installed (${shell})` : "Not installed",
-    fix: !hooksInstalled ? "Run: chitty hook install zsh" : undefined
+    fix: !hooksInstalled ? "Run: can hook install zsh" : undefined
   });
 
-  // Extensions
-  const extensions = Object.keys(config.extensions || {});
-  const enabledExt = extensions.filter(e => config.extensions[e]?.enabled !== false);
+  // Plugins: the bundled ones ship inside this package, plus any npm extensions listed in
+  // config. There is no separate package to install for neon/cf/linear.
+  const loader = new PluginLoader(config);
+  await loader.loadAll();
+  const plugins = loader.getAllPlugins();
   checks.push({
-    name: "Extensions",
-    status: enabledExt.length > 0 ? "✓" : "⚠",
-    message: `${enabledExt.length}/${extensions.length} enabled`,
-    fix: extensions.length === 0 ? "Install: npm install @chitty/cloudflare @chitty/neon @chitty/linear" : undefined
+    name: "Plugins",
+    status: plugins.length > 0 ? "✓" : "✗",
+    message: `${plugins.length} loaded`,
+    fix: plugins.length === 0 ? "Reinstall: npm install -g chittycan" : undefined
   });
 
   // Git installed (for hooks)
@@ -136,7 +139,7 @@ export async function doctor(): Promise<void> {
         name: tc.name,
         status: "⚠",
         message: "Not configured",
-        fix: `Set ${tc.env} environment variable or run: chitty sync setup`
+        fix: `Set ${tc.env} environment variable or run: can sync setup`
       });
     }
   }
