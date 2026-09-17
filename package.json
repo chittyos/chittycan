@@ -63,7 +63,7 @@
     "@neondatabase/serverless": "^1.1.0",
     "@notionhq/client": "^5.23.3",
     "@octokit/rest": "^22.0.1",
-    "chalk": "^5.6.2",
+    "chalk": "^6.0.0",
     "fs-extra": "^11.4.0",
     "inquirer": "^14.1.0",
     "ora": "^9.4.1",
