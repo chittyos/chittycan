@@ -10,11 +10,14 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ENTRY = join(process.cwd(), "dist", "index.js");
+const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
+const ENTRY = join(REPO, "dist", "index.js");
+const SOURCES = ["src/index.ts", "src/commands/doctor.ts", "src/commands/extension.ts", "src/plugins/chittyos/chittyconnect.ts"];
 let home: string;
 
 const can = (...args: string[]) => {
@@ -30,9 +33,17 @@ describe("CLI output on a clean HOME", () => {
     if (!existsSync(ENTRY)) {
       throw new Error("dist/index.js missing — run `npm run build` before this suite");
     }
+    // These assertions are about the built CLI; a stale dist would test old code silently.
+    const built = statSync(ENTRY).mtimeMs;
+    const stale = SOURCES.filter((f) => statSync(join(REPO, f)).mtimeMs > built);
+    if (stale.length) {
+      throw new Error(`dist/ is older than ${stale.join(", ")} — run \`npm run build\``);
+    }
     home = mkdtempSync(join(tmpdir(), "can-out-"));
   });
-  afterAll(() => rmSync(home, { recursive: true, force: true }));
+  afterAll(() => {
+    if (home) rmSync(home, { recursive: true, force: true });
+  });
 
   it("prints no plugin-shadowing warning", () => {
     const r = can("--version");
@@ -51,7 +62,7 @@ describe("CLI output on a clean HOME", () => {
     const r = can("doctor");
     expect(r.out).toMatch(/Plugins: [1-9]\d* loaded/);
     expect(r.out).not.toContain("@chitty/");
-    expect(r.out).not.toContain("Run: chitty ");
+    expect(r.out).not.toMatch(/run: chitty /i);
   });
 
   it("ext install fails instead of printing steps that cannot work", () => {

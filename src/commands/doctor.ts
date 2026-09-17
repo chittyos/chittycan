@@ -139,7 +139,7 @@ export async function doctor(): Promise<void> {
         name: tc.name,
         status: "⚠",
         message: "Not configured",
-        fix: `Set ${tc.env} environment variable or run: chitty sync setup`
+        fix: `Set ${tc.env} environment variable or run: can sync setup`
       });
     }
   }

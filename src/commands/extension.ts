@@ -71,10 +71,11 @@ export async function disableExtension(name: string): Promise<void> {
 }
 
 export async function installExtension(name: string): Promise<void> {
-  // Third-party extensions are not installable yet: PluginLoader.loadPlugin() resolves
-  // the name from chittycan's own node_modules (so a global `npm install -g` is invisible
-  // to it), and enablePlugin() only flips an entry that already exists in config. Say so
-  // rather than print steps that cannot work. neon, cf, linear etc. are bundled.
+  // Third-party extensions are not installable yet: enablePlugin() only flips an entry
+  // that already exists in config, so `can ext enable <pkg>` reports success and saves
+  // nothing. (A package installed next to chittycan does resolve if its entry is added to
+  // config by hand.) Say so rather than print steps that cannot work. neon, cf, linear
+  // etc. are bundled.
   console.error(`[chitty] Cannot install "${name}": third-party extensions are not supported in this release.`);
   console.error("  Bundled plugins need no install — see: can ext list");
   process.exit(1);
