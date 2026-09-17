@@ -10,8 +10,8 @@ export async function listExtensions(): Promise<void> {
   const plugins = loader.getAllPlugins();
 
   if (!plugins.length) {
-    console.log("[chitty] No extensions installed");
-    console.log("  → Run: npm install @chitty/cloudflare @chitty/neon @chitty/linear");
+    console.log("[chitty] No extensions loaded — the bundled plugins failed to load.");
+    console.log("  → Reinstall: npm install -g chittycan");
     return;
   }
 
@@ -71,13 +71,11 @@ export async function disableExtension(name: string): Promise<void> {
 }
 
 export async function installExtension(name: string): Promise<void> {
-  console.log(`[chitty] Installing ${name}...`);
-  console.log(`  → Run: npm install ${name}`);
-  console.log();
-  console.log("  Available extensions:");
-  console.log("    @chitty/cloudflare - Manage Cloudflare Workers, DNS, KV, R2");
-  console.log("    @chitty/neon - Manage Neon PostgreSQL databases");
-  console.log("    @chitty/linear - Manage Linear issues");
-  console.log("    @chitty/vercel - Manage Vercel deployments");
-  console.log("    @chitty/railway - Manage Railway services");
+  // Third-party extensions are not installable yet: PluginLoader.loadPlugin() resolves
+  // the name from chittycan's own node_modules (so a global `npm install -g` is invisible
+  // to it), and enablePlugin() only flips an entry that already exists in config. Say so
+  // rather than print steps that cannot work. neon, cf, linear etc. are bundled.
+  console.error(`[chitty] Cannot install "${name}": third-party extensions are not supported in this release.`);
+  console.error("  Bundled plugins need no install — see: can ext list");
+  process.exit(1);
 }
