@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   id-token: write
+  packages: write
 
 jobs:
   publish-npm:
@@ -67,6 +68,47 @@ jobs:
         run: npm publish --provenance --access public --loglevel verbose
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # GitHub Packages is a SECOND registry, not a replacement: npm keeps the plain
+  # `chittycan` name so `npm i -g chittycan` is unaffected. GitHub Packages only
+  # accepts names scoped to the owning org, so the name is rewritten to
+  # @chittyos/chittycan for this publish alone and never committed.
+  #
+  # Independent of publish-npm on purpose — a failure on one registry should not
+  # withhold the release from the other. Auth is the job's own GITHUB_TOKEN:
+  # nothing to store, nothing to rotate.
+  publish-github-packages:
+    name: Publish to GitHub Packages
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@chittyos'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Scope the package name for GitHub Packages
+        run: |
+          node -e '
+            const fs = require("fs");
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            pkg.name = "@chittyos/chittycan";
+            fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+          '
+          node -p '"publishing as " + require("./package.json").name'
+
+      - name: Publish
+        run: npm publish --registry=https://npm.pkg.github.com
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   create-release:
     name: Create GitHub Release
