@@ -5,6 +5,14 @@ All notable changes to ChittyCan will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-09-18
+
+### Changed
+
+- Tagged releases now also publish to GitHub Packages as `@chittyos/chittycan`.
+  npm keeps the unscoped `chittycan` name, so `npm i -g chittycan` is unchanged.
+  No code changes.
+
 ## [0.6.2] - 2026-09-17
 
 ### Fixed
