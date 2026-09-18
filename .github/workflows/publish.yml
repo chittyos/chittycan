@@ -110,6 +110,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Build and test BEFORE renaming, then publish with --ignore-scripts.
+      # prepublishOnly would otherwise re-run the suite against the scoped name,
+      # and tests/stemcell asserts the project name is `chittycan` — the rename
+      # made the suite fail and took the whole publish with it.
+      - name: Build and test
+        run: |
+          npm run build
+          npm test
+
       - name: Scope the package name for GitHub Packages
         run: |
           node -e '
@@ -121,7 +130,7 @@ jobs:
           node -p '"publishing as " + require("./package.json").name'
 
       - name: Publish
-        run: npm publish --registry=https://npm.pkg.github.com
+        run: npm publish --registry=https://npm.pkg.github.com --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
