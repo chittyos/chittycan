@@ -5,6 +5,15 @@ All notable changes to ChittyCan will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2026-09-18
+
+### Fixed
+
+- The GitHub Packages publish failed in 0.6.3: renaming the package to
+  `@chittyos/chittycan` made `prepublishOnly` re-run the suite, and
+  `tests/stemcell` asserts the project name is `chittycan`. The job now builds
+  and tests before renaming and publishes with `--ignore-scripts`.
+
 ## [0.6.3] - 2026-09-18
 
 ### Changed
