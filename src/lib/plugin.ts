@@ -1,5 +1,5 @@
 /**
- * Plugin System for ChittyTracker
+ * Plugin System for ChittyCan
  * Allows dynamic loading of extensions
  */
 

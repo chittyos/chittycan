@@ -1,12 +1,12 @@
 # ChittyOS Services Integration
 
-ChittyTracker as the universal CLI for the entire ChittyOS ecosystem.
+ChittyCan as the universal CLI for the entire ChittyOS ecosystem.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      ChittyTracker CLI                       │
+│                      ChittyCan CLI                       │
 │           (Universal Infrastructure Interface)               │
 └─────────────────────────────────────────────────────────────┘
                             │

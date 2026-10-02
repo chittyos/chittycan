@@ -1,5 +1,5 @@
 /**
- * Linear Extension for ChittyTracker
+ * Linear Extension for ChittyCan
  * Manage issues, projects, and sync with Notion
  */
 
@@ -217,7 +217,7 @@ const LinearPlugin: ChittyPlugin = {
     name: "@chitty/linear",
     version: "1.0.0",
     description: "Manage Linear issues and sync with Notion",
-    author: "ChittyTracker",
+    author: "ChittyCan",
     homepage: "https://github.com/chittytracker/chittytracker",
   },
 
