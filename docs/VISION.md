@@ -1,4 +1,4 @@
-# ChittyTracker Vision
+# ChittyCan Vision
 
 **The Universal Infrastructure Interface**
 
@@ -26,7 +26,7 @@ Each has its own:
 
 **Result:** Context switching, forgotten commands, scattered configs, manual syncing.
 
-## The Solution: ChittyTracker
+## The Solution: ChittyCan
 
 A **unified CLI** with:
 - **rclone-style config** - One interactive menu for all "remotes"
@@ -293,13 +293,13 @@ chitty mac launchd create chitty-sync \
 ```bash
 # Via MCP server
 claude: "Show me all open issues across platforms"
-# ChittyTracker MCP → queries Notion, GitHub, Linear
+# ChittyCan MCP → queries Notion, GitHub, Linear
 
 claude: "Deploy chittyauth to production"
-# ChittyTracker MCP → runs deployment, updates tracker
+# ChittyCan MCP → runs deployment, updates tracker
 
 claude: "What did I work on yesterday?"
-# ChittyTracker MCP → reads checkpoints, shows summary
+# ChittyCan MCP → reads checkpoints, shows summary
 ```
 
 ### 7. Cross-Platform Task Sync
@@ -417,7 +417,7 @@ chitty zapier zap create "Daily Summary" \
 - **Community extensions** - Free, community-maintained
 
 ### Premium Features (Future)
-- **ChittyTracker Cloud** - Hosted sync service ($9/mo)
+- **ChittyCan Cloud** - Hosted sync service ($9/mo)
 - **Web Dashboard** - Visual interface, analytics ($19/mo)
 - **Team workspaces** - Shared configs, audit logs ($49/mo/team)
 - **Enterprise extensions** - Jira, Azure, custom SSO ($199/mo)
@@ -457,7 +457,7 @@ chitty zapier zap create "Daily Summary" \
 ### Q4 2025: Platform & Scale
 - [ ] Web dashboard (MVP)
 - [ ] Mobile app (iOS/Android)
-- [ ] ChittyTracker Cloud (hosted sync)
+- [ ] ChittyCan Cloud (hosted sync)
 - [ ] 20+ total extensions
 - [ ] 1,000+ users
 
@@ -503,7 +503,7 @@ chitty zapier zap create "Daily Summary" \
 
 ## Vision Statement
 
-**ChittyTracker makes developer infrastructure feel simple again.**
+**ChittyCan makes developer infrastructure feel simple again.**
 
 Instead of juggling 20 different CLIs, configs, and dashboards, you have one interface that speaks the same language everywhere. Create an issue in Notion, it syncs to GitHub and Linear. Deploy to Cloudflare, it updates your tracker. Ask Claude to check CI status, it queries all your platforms.
 

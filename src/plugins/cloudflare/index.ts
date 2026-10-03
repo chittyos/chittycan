@@ -1,5 +1,5 @@
 /**
- * Cloudflare Extension for ChittyTracker
+ * Cloudflare Extension for ChittyCan
  * Manage Workers, DNS, KV, R2, D1, Pages
  */
 
@@ -151,7 +151,7 @@ const CloudflarePlugin: ChittyPlugin = {
     name: "@chitty/cloudflare",
     version: "1.0.0",
     description: "Manage Cloudflare Workers, DNS, KV, R2, and more",
-    author: "ChittyTracker",
+    author: "ChittyCan",
     homepage: "https://github.com/chittytracker/chittytracker",
   },
 

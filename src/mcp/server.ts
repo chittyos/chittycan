@@ -1,5 +1,5 @@
 /**
- * MCP Server for ChittyTracker
+ * MCP Server for ChittyCan
  * Exposes infrastructure management via Model Context Protocol
  */
 
@@ -317,7 +317,7 @@ async function handleCheckpointsList(args: any) {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("ChittyTracker MCP server running on stdio");
+  console.error("ChittyCan MCP server running on stdio");
 }
 
 main().catch((error) => {

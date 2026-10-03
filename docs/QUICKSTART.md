@@ -1,4 +1,4 @@
-# ChittyTracker Quick Start
+# ChittyCan Quick Start
 
 Get up and running in 5 minutes.
 

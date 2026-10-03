@@ -1,4 +1,4 @@
-# ChittyTracker OS Support
+# ChittyCan OS Support
 
 Cross-platform universal infrastructure interface.
 
@@ -91,7 +91,7 @@ FROM chittytracker/cli:alpine
 #### Windows 11/10
 ```bash
 # Install via winget (future)
-winget install ChittyTracker
+winget install ChittyCan
 
 # Or via Chocolatey (future)
 choco install chittytracker
@@ -391,7 +391,7 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Install ChittyTracker
+      - name: Install ChittyCan
         run: npm install -g chittytracker
 
       - name: Configure
@@ -523,7 +523,7 @@ sudo dnf install libnotify      # Fedora
 sudo pacman -S libnotify        # Arch
 
 # Test
-notify-send "Test" "ChittyTracker notification"
+notify-send "Test" "ChittyCan notification"
 ```
 
 **systemd service fails:**

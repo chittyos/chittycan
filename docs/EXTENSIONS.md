@@ -1,4 +1,4 @@
-# ChittyTracker Extensions
+# ChittyCan Extensions
 
 Universal infrastructure interface - remote types and integrations.
 
