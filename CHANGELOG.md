@@ -5,6 +5,16 @@ All notable changes to ChittyCan will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.6] - 2026-10-19
+
+### Changed
+
+- Republish of 0.6.5 with no code changes. The 0.6.5 npm publish was held as a
+  staged version awaiting 2FA approval and its version number can no longer be
+  published, so 0.6.5 never reached npm (it is on GitHub Packages only).
+  0.6.6 is the first release published to npm through trusted publishing
+  (OIDC) instead of a stored token.
+
 ## [0.6.5] - 2026-10-19
 
 ### Changed
