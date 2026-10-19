@@ -17,6 +17,7 @@ import {
   recordArtifactHash,
   mergeArtifactsIntoRepo,
   normalizeArtifactPath,
+  toPortablePath,
   resolveHome,
   setEnabled,
   type MarketplaceArtifact,
@@ -355,8 +356,11 @@ describe("hash scope — executable content is not excluded", () => {
   });
 });
 
+// Windows has no mkfifo executable; FIFOs are a POSIX-only fixture.
+const posixIt = process.platform === "win32" ? it.skip : it;
+
 describe("non-regular root files", () => {
-  it("rejects a FIFO at the artifact root instead of reading (and blocking on) it", () => {
+  posixIt("rejects a FIFO at the artifact root instead of reading (and blocking on) it", () => {
     const fifoPath = path.join(tmpRoot, "fifo-root");
     execSync(`mkfifo "${fifoPath}"`);
 
@@ -367,7 +371,7 @@ describe("non-regular root files", () => {
     expect(verifyArtifact(a).status).toBe("missing");
   });
 
-  it("rejects a FIFO added inside an already-recorded directory artifact", () => {
+  posixIt("rejects a FIFO added inside an already-recorded directory artifact", () => {
     const a = makeArtifact("skill-interior-fifo", { "SKILL.md": "x\n" });
     recordArtifactHash(a);
     expect(verifyArtifact(a).status).toBe("ok");
@@ -636,24 +640,22 @@ describe("symlinks", () => {
     }
   });
 
-  it("recognizes a '..'-laden symlink target that genuinely resolves under home as equivalent to the direct spelling", () => {
-    // "$HOME/../<user>/shared/lib.md" resolves to exactly the same real file
-    // as "$HOME/shared/lib.md" when $HOME's basename is <user>. Once ".."
-    // is canonicalized before the underHome check, both spellings land under
-    // home and encode to the same portable "~/shared/lib.md" — so switching
-    // between them is recognized as pointing at the same real target, not
-    // flagged as a content change.
+  it("does not collapse '..' after a symlinked component into the direct spelling", () => {
+    // "$HOME/jump/../payload" is resolved by the kernel component by component:
+    // when "jump" is a symlink to another directory, ".." leaves THAT
+    // directory, not $HOME. Lexically collapsing it to "$HOME/payload" gave
+    // both targets one encoding, so retargeting between them went undetected.
     const home = os.homedir();
-    const userDir = path.basename(home);
-    const a = makeArtifact("skill-dots-under-home", { "SKILL.md": "x\n" });
+    const a = makeArtifact("skill-dots-symlinked-parent", { "SKILL.md": "x\n" });
     const link = path.join(a.standalone.path!, "lib.md");
-    fs.symlinkSync(path.join(home, "..", userDir, "shared", "lib.md"), link);
+    fs.symlinkSync(`${home}/jump/../payload`, link);
     recordArtifactHash(a);
+    expect(verifyArtifact(a).status).toBe("ok");
 
     fs.unlinkSync(link);
-    fs.symlinkSync(path.join(home, "shared", "lib.md"), link);
+    fs.symlinkSync(`${home}/payload`, link);
 
-    expect(verifyArtifact(a).status).toBe("ok");
+    expect(verifyArtifact(a).status).toBe("modified");
   });
 
   it("detects a symlink ROOT retargeted to different content with an identical hashed shape", () => {
@@ -1168,6 +1170,36 @@ describe("normalizeArtifactPath", () => {
     const portable = normalizeArtifactPath(home);
     expect(portable).toBe("~/");
     expect(resolveHome(portable)).toBe(home);
+  });
+});
+
+describe("toPortablePath", () => {
+  it("leaves a UNC-style path untouched instead of adding a symlink-escape backslash", () => {
+    // On native Windows an absolute UNC path starts with "\\". The symlink-target
+    // encoding escapes a leading backslash, which would turn it into a
+    // three-backslash path naming a different location.
+    expect(toPortablePath("\\\\server\\share\\skill")).toBeNull();
+    expect(toPortablePath(path.join(os.homedir(), "skills", "x"))).toBe("~/skills/x");
+  });
+});
+
+describe("legacy relative standalone.path", () => {
+  it("is unverifiable rather than resolved against the verifier's CWD", () => {
+    const a = makeArtifact("skill-legacy-rel", { "SKILL.md": "x\n" });
+    a.standalone.path = "skill-legacy-rel";
+    const prev = process.cwd();
+    process.chdir(tmpRoot);
+    try {
+      // The relative name exists under this CWD, but a record written before
+      // paths were normalized has no way to say WHICH directory it meant.
+      expect(computeArtifactHash(a)).toBeNull();
+      const result = verifyArtifact(a);
+      expect(result.status).toBe("missing");
+      expect(result.detail).toContain("relative");
+      expect(recordArtifactHash(a).ok).toBe(false);
+    } finally {
+      process.chdir(prev);
+    }
   });
 });
 

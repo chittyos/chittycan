@@ -135,17 +135,40 @@ export function resolveHome(p: string): string {
  * match even when the artifact's content is identical.
  */
 function toPortableTarget(target: string): string {
+  const portable = toPortablePath(target);
+  if (portable !== null) return portable;
+  // A symlink target is arbitrary text, not a validated path — nothing stops
+  // it from already starting with a literal "~" (which the OS does NOT
+  // expand; it is just another path segment) or a literal "\" (the escape
+  // character below). Left as-is, either would collide with this function's
+  // own output: an absolute target under $HOME and a literal "~/..." target
+  // would otherwise both produce the same string, and a literal "\~/..."
+  // target would collide with the escaped form of "~/...". Escaping any
+  // leading "~" OR "\" keeps the mapping injective — `toPortablePath` never
+  // produces a value starting with "\", so a leading "\" unambiguously marks
+  // an escaped raw target, and it can always be undone by dropping one
+  // leading "\".
+  return /^[~\\]/.test(target) ? "\\" + target : target;
+}
+
+/**
+ * Home-relative rewrite only: `~/...` when `target` lies under the current
+ * home directory, otherwise null. Unlike `toPortableTarget` it adds no
+ * symlink-target escaping, so it is the right conversion for filesystem
+ * paths such as a Windows UNC path (`\\server\share\skill`), which must stay
+ * as written rather than gain a leading escape backslash.
+ */
+export function toPortablePath(target: string): string | null {
   const home = os.homedir();
-  // Canonicalize ".." / "." segments in an absolute target before deciding
-  // whether it falls under home — mirrors normalizeArtifactPath's use of
-  // path.resolve() for the same reason. A raw symlink target such as
-  // "$HOME/../shared/lib.md" is lexically prefixed by $HOME even though it
-  // resolves outside it; left unresolved, that would be wrongly encoded as
-  // the portable "~/../shared/lib.md", which resolves to a different (or
-  // missing) location on an install with a different home directory. A
-  // relative target (e.g. "../lib.md") is left untouched — it is never
-  // compared against home and is already portable as-is.
-  const canonical = path.isAbsolute(target) ? path.normalize(target) : target;
+  // The target is deliberately NOT lexically normalized. A raw symlink target
+  // such as "$HOME/jump/../payload" is resolved by the kernel component by
+  // component: if "jump" is itself a symlink, ".." steps out of ITS target,
+  // not back to $HOME, so collapsing it to "$HOME/payload" would let two
+  // different resolutions share one encoding. A target with a ".." segment is
+  // therefore never encoded as portable (checked below) and is hashed as the
+  // raw text. A relative target (e.g. "../lib.md") is never compared against
+  // home and is already portable as-is.
+  const canonical = target;
   // Windows paths are case-insensitive, so os.homedir()'s case need not match
   // the case a caller resolved the target with (e.g. a differently-cased
   // drive letter or username segment). Comparing case-sensitively there would
@@ -157,7 +180,7 @@ function toPortableTarget(target: string): string {
       ? canonical.toLowerCase() === home.toLowerCase() ||
         canonical.toLowerCase().startsWith((home + path.sep).toLowerCase())
       : canonical === home || canonical.startsWith(home + path.sep);
-  if (underHome) {
+  if (underHome && !canonical.slice(home.length).split(/[\\/]/).includes("..")) {
     // Always emit a forward-slash "~/..." form — `resolveHome` only ever
     // recognizes that prefix. Left as `canonical.slice(home.length)` verbatim,
     // this would (a) come out as bare "~" with no slash when canonical ===
@@ -166,18 +189,7 @@ function toPortableTarget(target: string): string {
     const rel = canonical.slice(home.length).split(path.sep).join("/");
     return "~/" + rel.replace(/^\//, "");
   }
-  // A symlink target is arbitrary text, not a validated path — nothing stops
-  // it from already starting with a literal "~" (which the OS does NOT
-  // expand; it is just another path segment) or a literal "\" (the escape
-  // character below). Left as-is, either would collide with this function's
-  // own output: an absolute target under $HOME and a literal "~/..." target
-  // would otherwise both produce the same string, and a literal "\~/..."
-  // target would collide with the escaped form of "~/...". Escaping any
-  // leading "~" OR "\" keeps the mapping injective — the branch above never
-  // produces a value starting with "\", so a leading "\" unambiguously marks
-  // an escaped raw target, and it can always be undone by dropping one
-  // leading "\".
-  return /^[~\\]/.test(target) ? "\\" + target : target;
+  return null;
 }
 
 /**
@@ -202,7 +214,7 @@ export function normalizeArtifactPath(p: string, cwd: string = process.cwd()): s
   // missing) path on an installation with a different home directory.
   if (p.startsWith("~/")) {
     const abs = path.resolve(os.homedir(), p.slice(2));
-    return toPortableTarget(abs);
+    return toPortablePath(abs) ?? abs;
   }
   // path.resolve also normalizes (collapses "." and ".." segments) even when
   // `p` is already absolute — necessary because an absolute input like
@@ -211,7 +223,7 @@ export function normalizeArtifactPath(p: string, cwd: string = process.cwd()): s
   // "~/../shared/skill" path that resolves somewhere else entirely on an
   // installation with a different home directory.
   const abs = path.resolve(cwd, p);
-  return toPortableTarget(abs);
+  return toPortablePath(abs) ?? abs;
 }
 
 // ---------------------------------------------------------------------------
@@ -412,6 +424,11 @@ export function computeArtifactHash(
 ): { hash: string; fileCount: number } | null {
   const root = resolveHome(artifact.standalone?.path ?? "");
   if (!root) return null;
+  // A relative path (a record written before registration normalized paths)
+  // would resolve against whichever directory the verifier happens to run
+  // from: hashing an unrelated same-named tree or reporting a real one
+  // missing. Unverifiable, never interpreted relative to the caller's CWD.
+  if (!path.isAbsolute(root)) return null;
 
   let isDir: boolean;
   let rootIsLink: boolean;
@@ -508,6 +525,13 @@ export function verifyArtifact(artifact: MarketplaceArtifact): VerifyResult {
 
   const computed = computeArtifactHash(artifact);
   if (!computed) {
+    if (!path.isAbsolute(resolveHome(declared))) {
+      return {
+        id: artifact.id,
+        status: "missing",
+        detail: `standalone.path is relative (${declared}) and cannot be verified independent of the working directory; re-register it with an absolute or ~/ path`,
+      };
+    }
     return {
       id: artifact.id,
       status: "missing",
