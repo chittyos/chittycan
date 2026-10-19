@@ -2,7 +2,9 @@
  * Collect the git state that `policy.ts` decides on.
  *
  * Everything here is READ-ONLY. No command in this file stages, commits,
- * checks out, stashes, or writes a ref. That is a hard invariant: facts are
+ * checks out, stashes, or writes a ref. (`merge-tree --write-tree` adds
+ * unreferenced tree/blob objects to the object store; it touches no ref,
+ * index or working tree.) That is a hard invariant: facts are
  * collected on session start against repos other sessions are actively using,
  * so collection itself must be incapable of disturbing them.
  *
@@ -182,22 +184,28 @@ async function branchCredibility(
     // conflicts by exit status: 0 clean, 1 conflicted. The legacy three-arg
     // form prints conflict markers as diff lines (`+<<<<<<< .our`), so a
     // marker count anchored at line start was always 0 and every branch read
-    // as merging clean. Any other status means the merge was not computed,
-    // and reporting that as "clean" is the failure this replaced — so throw.
+    // as merging clean. Any other status means the merge was not computed.
+    // That must never read as clean, but it must not throw either: capture
+    // calls this before protecting uncommitted work, and a throw here would
+    // abort the capture. So it is recorded as conflicted (the same treatment
+    // as unrelated histories above) and warned about. Note the `git()` helper
+    // also maps spawn failures to exit 1, so `conflicts > 0` means
+    // "conflicted or not computable" — both of which make a branch unlandable
+    // as far as this tool can tell, and archiving deletes nothing.
     const tree = await git(root, [
       "merge-tree", "--write-tree", "--name-only", "--no-messages", base, ref,
     ]);
-    if (tree.code !== 0 && tree.code !== 1) {
-      throw new Error(
-        `git merge-tree --write-tree failed for ${ref} (exit ${tree.code}); ` +
-          `branch mergeability needs git >= 2.38`,
+    let conflicts = 0;
+    if (tree.code === 1) {
+      // Output is the tree oid, then one conflicted path per line.
+      conflicts = Math.max(1, tree.stdout.trim().split("\n").slice(1).filter(Boolean).length);
+    } else if (tree.code !== 0) {
+      process.stderr.write(
+        `warning: git merge-tree --write-tree failed for ${ref} (exit ${tree.code}; ` +
+          `needs git >= 2.38) — treating it as not landable\n`,
       );
+      conflicts = 1;
     }
-    // Output is the tree oid, then one conflicted path per line.
-    const conflicts =
-      tree.code === 1
-        ? Math.max(1, tree.stdout.trim().split("\n").slice(1).filter(Boolean).length)
-        : 0;
     out.push({
       name,
       unique: Number(uniqueRaw) || 0,
