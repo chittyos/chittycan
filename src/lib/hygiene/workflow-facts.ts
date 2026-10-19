@@ -178,8 +178,26 @@ async function branchCredibility(
     }
     const counts = await git(root, ["rev-list", "--left-right", "--count", `${base}...${ref}`]);
     const [behindRaw, uniqueRaw] = counts.stdout.trim().split(/\s+/);
-    const tree = await git(root, ["merge-tree", mb.stdout.trim(), base, ref]);
-    const conflicts = (tree.stdout.match(/^<<<<<<< /gm) ?? []).length;
+    // `--write-tree` (git >= 2.38) does a real merge in memory and reports
+    // conflicts by exit status: 0 clean, 1 conflicted. The legacy three-arg
+    // form prints conflict markers as diff lines (`+<<<<<<< .our`), so a
+    // marker count anchored at line start was always 0 and every branch read
+    // as merging clean. Any other status means the merge was not computed,
+    // and reporting that as "clean" is the failure this replaced — so throw.
+    const tree = await git(root, [
+      "merge-tree", "--write-tree", "--name-only", "--no-messages", base, ref,
+    ]);
+    if (tree.code !== 0 && tree.code !== 1) {
+      throw new Error(
+        `git merge-tree --write-tree failed for ${ref} (exit ${tree.code}); ` +
+          `branch mergeability needs git >= 2.38`,
+      );
+    }
+    // Output is the tree oid, then one conflicted path per line.
+    const conflicts =
+      tree.code === 1
+        ? Math.max(1, tree.stdout.trim().split("\n").slice(1).filter(Boolean).length)
+        : 0;
     out.push({
       name,
       unique: Number(uniqueRaw) || 0,
