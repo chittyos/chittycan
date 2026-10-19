@@ -87,6 +87,36 @@ describe("remote branch mode", () => {
     }
   });
 
+  it("counts a real content conflict, and only a real one", async () => {
+    const { work, origin } = cloned();
+    try {
+      // Both branches fork from `base` before main moves.
+      git(work, "checkout", "-qb", "feat/conflicts");
+      writeFileSync(join(work, "f.txt"), "branch edit");
+      git(work, "commit", "-qam", "edit f on branch");
+      git(work, "push", "-q", "origin", "feat/conflicts");
+      git(work, "checkout", "-q", "main");
+      git(work, "checkout", "-qb", "feat/clean");
+      writeFileSync(join(work, "g.txt"), "unrelated");
+      git(work, "add", "g.txt");
+      git(work, "commit", "-qm", "add g");
+      git(work, "push", "-q", "origin", "feat/clean");
+      git(work, "checkout", "-q", "main");
+      writeFileSync(join(work, "f.txt"), "main edit");
+      git(work, "commit", "-qam", "edit f on main");
+      git(work, "push", "-q", "origin", "main");
+      git(work, "fetch", "-q", "origin");
+
+      const facts = await collectRemoteBranchFacts(work);
+      const by = Object.fromEntries(facts.branches.map((b) => [b.name, b]));
+      expect(by["feat/conflicts"]!.conflicts).toBeGreaterThan(0);
+      expect(by["feat/clean"]!.conflicts).toBe(0);
+      expect(by["feat/clean"]!.unique).toBe(1);
+    } finally {
+      cleanup(work, origin);
+    }
+  });
+
   it("drops origin/HEAD, which for-each-ref shortens to bare `origin`", async () => {
     const { work, origin } = cloned();
     try {
