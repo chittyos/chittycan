@@ -36,10 +36,8 @@ jobs:
       # >= 11.5.1, and npm 12 declares node ^22.22.2 || ^24.15.0 || >=26 so it
       # cannot install here at all. This job already grants id-token: write.
       #
-      # NOTE: the old npm is only ONE of two blockers. A trusted publisher for
-      # CHITTYOS/chittycan + this workflow must also be registered at npmjs.com;
-      # without it, publishing still fails ENEEDAUTH. Upgrading also leaves the
-      # NODE_AUTH_TOKEN path untouched, so either route works once configured.
+      # A trusted publisher for CHITTYOS/chittycan + publish.yml is registered at
+      # npmjs.com (first OIDC publish: 0.6.6, run 39192487810).
       #
       # Pinned exactly: this step only ever runs during a real release, so a
       # floating range would change the publish path with no prior smoke test.
@@ -57,24 +55,20 @@ jobs:
       - name: Test
         run: npm test
 
-      # Two supported auth routes, in preference order:
-      #   1. Trusted publishing — configure CHITTYOS/chittycan + this workflow as
-      #      a trusted publisher at npmjs.com. No secret exists to leak or
-      #      rotate; OIDC is exchanged at publish time. NODE_AUTH_TOKEN is simply
-      #      empty and unused.
-      #   2. NPM_TOKEN — a granular token in the org/repo secret, used when no
-      #      trusted publisher is registered.
-      # Run 30600637120 failed ENEEDAUTH because neither was configured.
+      # Auth is trusted publishing (OIDC) only; no npm token is passed.
+      # The NPM_TOKEN fallback was removed on purpose: when the OIDC exchange
+      # failed, npm quietly published with the token instead, and npm held that
+      # publish as a staged version awaiting 2FA approval. That burned the
+      # version number — 0.6.5 can never be published to npm (409 "previously
+      # staged"). With no token, a failed exchange fails this step loudly.
+      #
       # --loglevel verbose is load-bearing, not noise. npm's OIDC exchange
       # (lib/utils/oidc.js) is documented to never throw: every failure —
       # unregistered publisher, wrong workflow filename, bad repo, failed token
-      # exchange — is emitted only at verbose level and then falls through to
-      # the same ENEEDAUTH as "no auth configured at all". Without this flag a
-      # misconfigured trusted publisher is indistinguishable from an absent one.
+      # exchange — is emitted only at verbose level and then falls through to a
+      # generic auth error. Without this flag the cause is invisible.
       - name: Publish to npm with provenance
         run: npm publish --provenance --access public --loglevel verbose
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   # GitHub Packages is a SECOND registry, not a replacement: npm keeps the plain
   # `chittycan` name so `npm i -g chittycan` is unaffected. GitHub Packages only
