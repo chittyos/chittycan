@@ -1,6 +1,6 @@
 import type { ChittyPlugin, CommandDefinition, RemoteTypeDefinition } from "@/lib/plugin";
 import type { Config } from "@/lib/config";
-import { CHITTYCLAW_PROVIDER_BASE_URLS, gatewayAuthHeaders } from "./gateway";
+import { CHITTYCLAW_PROVIDER_BASE_URLS, gatewayAuthHeaders } from "./gateway.js";
 
 interface AnthropicRemote {
   type: "anthropic";
@@ -259,7 +259,6 @@ export const anthropicPlugin: ChittyPlugin = {
   remoteTypes: [remoteType],
   commands,
   async init(config: Config) {
-    console.log("✓ Anthropic Claude connector initialized");
   },
 };
 

@@ -224,7 +224,6 @@ export const groqPlugin: ChittyPlugin = {
   remoteTypes: [remoteType],
   commands,
   async init(config: Config) {
-    console.log("✓ Groq fast inference connector initialized");
   },
 };
 

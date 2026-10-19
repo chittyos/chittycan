@@ -21,7 +21,8 @@ import { checkpoint, listCheckpoints } from "./commands/checkpoint.js";
 import { installZsh, uninstallZsh } from "./commands/hook.js";
 import { syncSetup, syncRun, syncStatus } from "./commands/sync.js";
 import { listExtensions, enableExtension, disableExtension, installExtension } from "./commands/extension.js";
-import { PluginLoader } from "./lib/plugin.js";
+import { PluginLoader, resolvePluginRemoteEnvironment } from "./lib/plugin.js";
+import { registerPluginCommands } from "./lib/plugin-commands.js";
 import { doctor } from "./commands/doctor.js";
 import { briefCommand } from "./commands/brief.js";
 import { chittyCommand } from "./commands/chitty.js";
@@ -107,6 +108,7 @@ const CLI_VERSION: string = (() => {
 const config = (await import("./lib/config.js")).loadConfig();
 const pluginLoader = new PluginLoader(config);
 await pluginLoader.loadAll();
+resolvePluginRemoteEnvironment(config, pluginLoader.getAllRemoteTypes());
 
 // Check for direct CLI routing (can gh ... instead of can chitty gh ...)
 const args = hideBin(process.argv);
@@ -123,7 +125,7 @@ if (firstArg && firstArg in CLI_CONFIGS) {
   process.exit(0);
 }
 
-yargs(args)
+const cli = yargs(args)
   .scriptName("can")
   .usage("$0 <command> [options]")
   .command(
@@ -131,7 +133,7 @@ yargs(args)
     "Interactive configuration menu (rclone-style)",
     () => {},
     async () => {
-      await configMenu();
+      await configMenu(pluginLoader);
     }
   )
   .command(
@@ -296,7 +298,7 @@ yargs(args)
         )
         .command(
           "install <name>",
-          "Install an extension",
+          "Install a third-party extension (not yet supported)",
           (yargs) =>
             yargs.positional("name", {
               describe: "Extension name",
@@ -1230,14 +1232,18 @@ yargs(args)
   .command(wipModule as any)
   .command(hygieneModule)
   .fail((msg, err, yargs) => {
-    // Self-Healing Telemetry: log crashes for chittyagent-resolve
-    const errorMsg = (err && err.message) ? err.message : (msg || "Unknown crash");
-    try {
-      trackCommandUsage("crash", errorMsg, "", false);
-      console.log(chalk.red("\n🚨  ChittyCan experienced a critical error."));
-      console.log(chalk.dim("   (Crash payload dispatched to chittyagent-resolve for triage)\n"));
-    } catch (e) {
-      // ignore tracker errors
+    // yargs calls this for two different things: usage errors (msg only — a missing
+    // subcommand, an unknown flag) and thrown errors (err set). Only the latter is a
+    // crash; reporting `can neon` with no subcommand as a critical error was noise.
+    if (err) {
+      // Self-Healing Telemetry: log crashes for chittyagent-resolve
+      try {
+        trackCommandUsage("crash", err.message || msg || "Unknown crash", "", false);
+        console.log(chalk.red("\n🚨  ChittyCan experienced a critical error."));
+        console.log(chalk.dim("   (Crash payload dispatched to chittyagent-resolve for triage)\n"));
+      } catch (e) {
+        // ignore tracker errors
+      }
     }
 
     if (msg) console.error(msg);
@@ -1246,6 +1252,41 @@ yargs(args)
     process.exit(1);
   })
   .demandCommand(1, "You must provide a command")
+  ;
+
+// Plugin commands must be registered BEFORE .strict(), which rejects anything unknown.
+// loadAll() populated the loader above; without this call getAllCommands() was never
+// consumed and every plugin-supplied command was unreachable.
+try {
+  // yargs exposes the registered command list only through internal methods, which are
+  // untyped. If that shape ever changes this must fail LOUDLY rather than silently
+  // permitting a plugin to shadow a builtin.
+  const internal = (cli as any).getInternalMethods?.()?.getCommandInstance?.();
+  const registeredBuiltinNames: string[] = internal?.getCommands?.() ?? [];
+  const builtinNames = new Set<string>([
+    ...registeredBuiltinNames,
+    ...Object.keys(CLI_CONFIGS),
+  ]);
+  if (registeredBuiltinNames.length === 0) {
+    console.warn("[chitty] Could not enumerate built-in commands; only direct CLI routes are protected from plugin shadowing.");
+  }
+  const pluginCommands = pluginLoader.getAllCommands().filter(cmd => {
+    const head = typeof cmd?.name === "string" ? cmd.name.trim().split(/\s+/)[0] : "";
+    if (head && builtinNames.has(head)) {
+      // Silently shadowing `can config` / `can connect` / `can export` would let any
+      // installed extension take over a builtin, including the credential store command.
+      console.warn(`[chitty] Plugin command "${cmd.name}" would shadow the built-in "${head}"; ignoring it.`);
+      return false;
+    }
+    return true;
+  });
+  registerPluginCommands(cli, pluginCommands, config);
+} catch (error: any) {
+  // A malformed plugin must not take down every command, including --version.
+  console.warn(`[chitty] Failed to register plugin commands: ${error.message}`);
+}
+
+cli
   .strict()
   .help()
   .alias("h", "help")

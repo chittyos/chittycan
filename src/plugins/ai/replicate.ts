@@ -90,7 +90,6 @@ export const replicatePlugin: ChittyPlugin = {
   remoteTypes: [remoteType],
   commands,
   async init() {
-    console.log("✓ Replicate connector initialized");
   },
 };
 

@@ -71,7 +71,6 @@ export const huggingfacePlugin: ChittyPlugin = {
   remoteTypes: [remoteType],
   commands,
   async init() {
-    console.log("✓ Hugging Face connector initialized");
   },
 };
 

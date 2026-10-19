@@ -7,7 +7,7 @@ export async function nudgeNow(): Promise<void> {
   const remoteNames = Object.keys(cfg.remotes);
 
   if (!remoteNames.length) {
-    console.log("[chitty] No remotes configured. Run 'chitty config' to add one.");
+    console.log("[chitty] No remotes configured. Run 'can config' to add one.");
     return;
   }
 
@@ -75,7 +75,7 @@ export function nudgeQuiet(): void {
   const remote = cfg.remotes[firstRemote];
 
   if (remote.type.startsWith("notion")) {
-    console.log(`  → Run: chitty open ${firstRemote}`);
+    console.log(`  → Run: can open ${firstRemote}`);
   }
 
   console.log();

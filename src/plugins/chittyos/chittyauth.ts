@@ -272,7 +272,6 @@ const ChittyAuthPlugin: ChittyPlugin = {
   ],
 
   async init(config: Config) {
-    console.log("[chitty] ChittyAuth extension loaded");
   },
 };
 

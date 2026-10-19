@@ -83,7 +83,6 @@ export const coherePlugin: ChittyPlugin = {
   remoteTypes: [remoteType],
   commands,
   async init() {
-    console.log("✓ Cohere connector initialized");
   },
 };
 

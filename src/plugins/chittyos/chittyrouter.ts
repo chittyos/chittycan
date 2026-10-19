@@ -488,7 +488,6 @@ export const chittyrouterPlugin: ChittyPlugin = {
   remoteTypes: [remoteType],
   commands,
   async init(config: Config) {
-    console.log("✓ ChittyRouter plugin initialized");
   },
 };
 
