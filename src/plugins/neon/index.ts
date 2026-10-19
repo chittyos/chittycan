@@ -1,5 +1,5 @@
 /**
- * Neon PostgreSQL Extension for ChittyTracker
+ * Neon PostgreSQL Extension for ChittyCan
  * Manage databases, branches, migrations, schema
  */
 
@@ -174,7 +174,7 @@ const NeonPlugin: ChittyPlugin = {
     name: "@chitty/neon",
     version: "1.0.0",
     description: "Manage Neon PostgreSQL databases, branches, and migrations",
-    author: "ChittyTracker",
+    author: "ChittyCan",
     homepage: "https://github.com/chittytracker/chittytracker",
   },
 
@@ -224,7 +224,6 @@ const NeonPlugin: ChittyPlugin = {
   ],
 
   async init(config: Config) {
-    console.log("[chitty] Neon extension loaded");
   },
 };
 

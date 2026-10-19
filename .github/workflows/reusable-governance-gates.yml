@@ -94,3 +94,59 @@ jobs:
       - name: Skip Dependency Audit (no package-lock.json)
         if: ${{ steps.lockfile.outputs.present != 'true' }}
         run: echo "No package-lock.json found; skipping dependency audit."
+
+  repo-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Build
+        run: npm run build
+      # Preflight. Without this, an unregistered `hygiene` command falls through
+      # to the yargs `.fail()` handler in src/index.ts, which dispatches a crash
+      # payload to chittyagent-resolve and exits 1 — indistinguishable from
+      # "findings found". Assert the command is registered first, and fail with
+      # a distinct marker if it is not. Never skip: a skip is exactly the
+      # signal-free gate this detector exists to catch.
+      - name: Repo Hygiene Preflight
+        shell: bash
+        run: |
+          set -uo pipefail
+          if ! node dist/index.js --help 2>/dev/null | grep -qE '(^|[[:space:]])hygiene([[:space:]]|$)'; then
+            echo "HYGIENE_DETECTOR_MISSING: \`can hygiene\` is not registered in dist/index.js."
+            echo "The repo-hygiene gate cannot run. This is a build/wiring failure, not a clean repo."
+            exit 2
+          fi
+          echo "HYGIENE_DETECTOR_PRESENT"
+      # Hard gate. `can hygiene` exits 1 when a finding at/above the threshold
+      # exists, 0 when clean, 2 when the detector itself failed to run. The
+      # preflight above guarantees exit 1 here means findings, not a missing
+      # command.
+      - name: Repo Hygiene (High+)
+        run: node dist/index.js hygiene . --min-severity high
+      # Findings detail, only when the gate fired. Threshold matches the gate so
+      # the summary cannot report low-severity noise as the cause of a high+
+      # failure. There is deliberately no baseline/allowlist/suppression file: a
+      # findings-suppression list is the "gate that provides no signal" this
+      # detector exists to catch.
+      - name: Repo Hygiene Findings
+        if: failure()
+        shell: bash
+        run: |
+          set -uo pipefail
+          out="$(node dist/index.js hygiene . --min-severity high --json 2>&1)"
+          status=$?
+          {
+            echo '### Repo hygiene findings (high+)'
+            if [[ "${status}" -gt 1 ]]; then
+              echo "HYGIENE_DETECTOR_FAILED (exit ${status}) — the output below is a detector error, not findings."
+            fi
+            echo '```'
+            echo "${out}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

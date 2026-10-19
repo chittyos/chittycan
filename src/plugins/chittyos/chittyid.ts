@@ -275,7 +275,6 @@ const ChittyIDPlugin: ChittyPlugin = {
   ],
 
   async init(config: Config) {
-    console.log("[chitty] ChittyID extension loaded");
   },
 };
 

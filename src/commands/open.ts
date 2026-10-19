@@ -6,7 +6,7 @@ export function open(name: string, view?: string): void {
   const remote = cfg.remotes?.[name];
 
   if (!remote) {
-    throw new Error(`Remote '${name}' not found. Run 'chitty config' to add it.`);
+    throw new Error(`Remote '${name}' not found. Run 'can config' to add it.`);
   }
 
   let url: string;
@@ -39,7 +39,7 @@ export function listRemotes(): void {
   const cfg = loadConfig();
 
   if (!Object.keys(cfg.remotes).length) {
-    console.log("[chitty] No remotes configured. Run 'chitty config' to add one.");
+    console.log("[chitty] No remotes configured. Run 'can config' to add one.");
     return;
   }
 
