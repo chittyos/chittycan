@@ -5,6 +5,33 @@ All notable changes to ChittyCan will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.5] - 2026-10-19
+
+### Changed
+
+- `can doctor` now treats a credential stored in config or the environment
+  (`NOTION_TOKEN`, `GITHUB_TOKEN`) as a failure (✗), not a pass (#150).
+  Presence alone is checked; no value is read or printed. Anything that parses
+  doctor output will see the inverted result.
+
+### Fixed
+
+- `can wip status` / `can wip branches` never detected merge conflicts, so
+  every branch read as "still merge clean" and none was ever classed `gone`
+  (#177). Conflict detection now uses `git merge-tree --write-tree`
+  (git >= 2.38); a merge that cannot be computed is reported as not landable,
+  never as clean.
+- `can surface compile` for `openapi-3.1`, `claude-skill` and `openai-mcp`, and
+  `can surface hotload`, printed success and exited 0 without doing anything.
+  They now exit 1 and say what did not happen (#140).
+- `can surface` picked the oldest installed plugin version (lexicographic
+  sort), sorted prereleases above their release, read option value
+  placeholders as positional parameters, and followed plugin rule paths
+  outside the plugin directory (#140).
+- Copyright holder in `LICENSE` is ChittyCorp LLC; remaining user-visible
+  ChittyTracker naming removed (#176).
+- Dependency advisories cleared with a lockfile-only `npm audit fix` (#179).
+
 ## [0.6.4] - 2026-09-18
 
 ### Fixed
