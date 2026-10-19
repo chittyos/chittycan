@@ -8,7 +8,11 @@ pnpm-lock.yaml
 
 # Build output
 dist/
+out/
 *.tsbuildinfo
+
+# Packed tarballs (npm pack) — never commit; publish via CI
+*.tgz
 
 # Environment files
 .env

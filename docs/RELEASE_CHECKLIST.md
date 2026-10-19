@@ -109,5 +109,5 @@ git push && git push --tags
 ---
 
 **Release Date:** 2024-11-04
-**Release Manager:** ChittyTracker Team
+**Release Manager:** ChittyCan Team
 **Build:** Clean build from main branch

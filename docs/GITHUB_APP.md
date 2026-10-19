@@ -1,4 +1,4 @@
-# GitHub App Setup for ChittyTracker
+# GitHub App Setup for ChittyCan
 
 This guide walks you through creating a GitHub App for two-way sync between Notion and GitHub.
 
@@ -22,7 +22,7 @@ Click **"New GitHub App"**
 
 ### 2. Basic Information
 
-- **GitHub App name**: `ChittyTracker` (or your preferred name)
+- **GitHub App name**: `ChittyCan` (or your preferred name)
 - **Homepage URL**: `https://github.com/YOUR_USERNAME/chittytracker`
 - **Webhook URL**: `https://YOUR_DOMAIN.com/api/github/webhook` (or ngrok URL for testing)
 - **Webhook secret**: Generate a random string and save it (you'll need this later)
@@ -138,7 +138,7 @@ npm run webhook:dev
 
 1. Go to https://www.notion.so/my-integrations
 2. Click **"New integration"**
-3. Name: `ChittyTracker`
+3. Name: `ChittyCan`
 4. Associated workspace: Select your workspace
 5. Capabilities:
    - [x] Read content
@@ -155,7 +155,7 @@ Save the **Internal Integration Token** (starts with `secret_`)
 1. Open your Notion database (Actions tracker)
 2. Click **"..."** in top-right
 3. Click **"Add connections"**
-4. Search for "ChittyTracker" and select it
+4. Search for "ChittyCan" and select it
 5. Click **Confirm**
 
 ## Testing the Setup

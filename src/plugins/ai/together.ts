@@ -84,7 +84,6 @@ export const togetherPlugin: ChittyPlugin = {
   remoteTypes: [remoteType],
   commands,
   async init() {
-    console.log("✓ Together AI connector initialized");
   },
 };
 

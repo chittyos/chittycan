@@ -4,9 +4,14 @@ import { surfaceCommand } from "./commands/surface.js";
 import { runCommand } from "./commands/run.js";
 import { scaffoldCommand } from './commands/scaffold.js';
 import * as viewportModule from "./commands/viewport.js";
+import * as wipModule from "./commands/wip.js";
+import * as hygieneModule from "./commands/hygiene.js";
 
 import yargs from "yargs";
 import chalk from "chalk";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { trackCommandUsage } from "./lib/usage-tracker.js";
 import { hideBin } from "yargs/helpers";
 import { configMenu } from "./commands/config.js";
@@ -16,7 +21,8 @@ import { checkpoint, listCheckpoints } from "./commands/checkpoint.js";
 import { installZsh, uninstallZsh } from "./commands/hook.js";
 import { syncSetup, syncRun, syncStatus } from "./commands/sync.js";
 import { listExtensions, enableExtension, disableExtension, installExtension } from "./commands/extension.js";
-import { PluginLoader } from "./lib/plugin.js";
+import { PluginLoader, resolvePluginRemoteEnvironment } from "./lib/plugin.js";
+import { registerPluginCommands } from "./lib/plugin-commands.js";
 import { doctor } from "./commands/doctor.js";
 import { briefCommand } from "./commands/brief.js";
 import { chittyCommand } from "./commands/chitty.js";
@@ -73,10 +79,36 @@ import {
   synthesizePatternsCommand
 } from "./commands/learning.js";
 
+/**
+ * Resolved from this module's own location, never inferred.
+ *
+ * `yargs.version()` with no argument searches upward from the entry script. The
+ * installed entry point is the `.bin/can` SYMLINK, so the search starts in
+ * `node_modules/.bin/` and reaches the consumer's package.json — or nothing —
+ * before it ever sees ours. Every installed copy therefore reported `unknown`,
+ * while a run from the source tree reported the right number, which is why this
+ * survived: the only environment that answered correctly was the one nobody
+ * ships. A fleet CLI that cannot say which version it is cannot be managed.
+ */
+const CLI_VERSION: string = (() => {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    // dist/index.js -> package.json is one level up. Read it rather than
+    // importing, so no JSON-module assertion or resolver behaviour is involved.
+    return (
+      JSON.parse(readFileSync(join(here, "..", "package.json"), "utf8")).version ??
+      "unknown"
+    );
+  } catch {
+    return "unknown";
+  }
+})();
+
 // Load plugins early
 const config = (await import("./lib/config.js")).loadConfig();
 const pluginLoader = new PluginLoader(config);
 await pluginLoader.loadAll();
+resolvePluginRemoteEnvironment(config, pluginLoader.getAllRemoteTypes());
 
 // Check for direct CLI routing (can gh ... instead of can chitty gh ...)
 const args = hideBin(process.argv);
@@ -93,7 +125,7 @@ if (firstArg && firstArg in CLI_CONFIGS) {
   process.exit(0);
 }
 
-yargs(args)
+const cli = yargs(args)
   .scriptName("can")
   .usage("$0 <command> [options]")
   .command(
@@ -101,7 +133,7 @@ yargs(args)
     "Interactive configuration menu (rclone-style)",
     () => {},
     async () => {
-      await configMenu();
+      await configMenu(pluginLoader);
     }
   )
   .command(
@@ -266,7 +298,7 @@ yargs(args)
         )
         .command(
           "install <name>",
-          "Install an extension",
+          "Install a third-party extension (not yet supported)",
           (yargs) =>
             yargs.positional("name", {
               describe: "Extension name",
@@ -1197,15 +1229,21 @@ yargs(args)
     }
   )
   .command(viewportModule)
+  .command(wipModule as any)
+  .command(hygieneModule)
   .fail((msg, err, yargs) => {
-    // Self-Healing Telemetry: log crashes for chittyagent-resolve
-    const errorMsg = (err && err.message) ? err.message : (msg || "Unknown crash");
-    try {
-      trackCommandUsage("crash", errorMsg, "", false);
-      console.log(chalk.red("\n🚨  ChittyCan experienced a critical error."));
-      console.log(chalk.dim("   (Crash payload dispatched to chittyagent-resolve for triage)\n"));
-    } catch (e) {
-      // ignore tracker errors
+    // yargs calls this for two different things: usage errors (msg only — a missing
+    // subcommand, an unknown flag) and thrown errors (err set). Only the latter is a
+    // crash; reporting `can neon` with no subcommand as a critical error was noise.
+    if (err) {
+      // Self-Healing Telemetry: log crashes for chittyagent-resolve
+      try {
+        trackCommandUsage("crash", err.message || msg || "Unknown crash", "", false);
+        console.log(chalk.red("\n🚨  ChittyCan experienced a critical error."));
+        console.log(chalk.dim("   (Crash payload dispatched to chittyagent-resolve for triage)\n"));
+      } catch (e) {
+        // ignore tracker errors
+      }
     }
 
     if (msg) console.error(msg);
@@ -1214,9 +1252,44 @@ yargs(args)
     process.exit(1);
   })
   .demandCommand(1, "You must provide a command")
+  ;
+
+// Plugin commands must be registered BEFORE .strict(), which rejects anything unknown.
+// loadAll() populated the loader above; without this call getAllCommands() was never
+// consumed and every plugin-supplied command was unreachable.
+try {
+  // yargs exposes the registered command list only through internal methods, which are
+  // untyped. If that shape ever changes this must fail LOUDLY rather than silently
+  // permitting a plugin to shadow a builtin.
+  const internal = (cli as any).getInternalMethods?.()?.getCommandInstance?.();
+  const registeredBuiltinNames: string[] = internal?.getCommands?.() ?? [];
+  const builtinNames = new Set<string>([
+    ...registeredBuiltinNames,
+    ...Object.keys(CLI_CONFIGS),
+  ]);
+  if (registeredBuiltinNames.length === 0) {
+    console.warn("[chitty] Could not enumerate built-in commands; only direct CLI routes are protected from plugin shadowing.");
+  }
+  const pluginCommands = pluginLoader.getAllCommands().filter(cmd => {
+    const head = typeof cmd?.name === "string" ? cmd.name.trim().split(/\s+/)[0] : "";
+    if (head && builtinNames.has(head)) {
+      // Silently shadowing `can config` / `can connect` / `can export` would let any
+      // installed extension take over a builtin, including the credential store command.
+      console.warn(`[chitty] Plugin command "${cmd.name}" would shadow the built-in "${head}"; ignoring it.`);
+      return false;
+    }
+    return true;
+  });
+  registerPluginCommands(cli, pluginCommands, config);
+} catch (error: any) {
+  // A malformed plugin must not take down every command, including --version.
+  console.warn(`[chitty] Failed to register plugin commands: ${error.message}`);
+}
+
+cli
   .strict()
   .help()
   .alias("h", "help")
-  .version()
+  .version(CLI_VERSION)
   .alias("v", "version")
   .parse();
