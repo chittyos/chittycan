@@ -103,7 +103,13 @@ async function compileGeminiGem(domain: string): Promise<void> {
   
   if (pluginJson.rules && Array.isArray(pluginJson.rules)) {
     for (const r of pluginJson.rules) {
-      rulesList.push(path.join(pluginDir, r));
+      if (typeof r !== "string") continue;
+      const resolved = path.resolve(pluginDir, r);
+      if (!isInsideDir(pluginDir, resolved)) {
+        console.log(chalk.yellow(`   ⚠️ Skipping rule outside plugin directory: ${r}`));
+        continue;
+      }
+      rulesList.push(resolved);
     }
   } else if (fs.existsSync(rulesDir)) {
     const files = fs.readdirSync(rulesDir).filter(f => f.endsWith(".md"));
@@ -226,8 +232,10 @@ function compareVersions(a: string, b: string): number {
   for (let i = 0; i < Math.max(segsA.length, segsB.length); i++) {
     const rawA = segsA[i];
     const rawB = segsB[i];
-    if (rawA === undefined) return -1;
-    if (rawB === undefined) return 1;
+    // A non-numeric extra segment is a prerelease tag, which sorts below the
+    // shorter (release) version: 1.0.0-alpha < 1.0.0.
+    if (rawA === undefined) return Number.isInteger(Number(rawB)) ? -1 : 1;
+    if (rawB === undefined) return Number.isInteger(Number(rawA)) ? 1 : -1;
     const numA = Number(rawA);
     const numB = Number(rawB);
     if (Number.isInteger(numA) && Number.isInteger(numB)) {
@@ -291,15 +299,23 @@ async function resolvePluginPath(domain: string): Promise<string | null> {
   return null;
 }
 
-export const __testing = { compareVersions, latestVersionDir };
+export const __testing = { compareVersions, latestVersionDir, compileGeminiGem, parseArgumentHintToParameters };
+
+/** True when `target` is `dir` itself or lies beneath it. */
+function isInsideDir(dir: string, target: string): boolean {
+  const root = path.resolve(dir);
+  const resolved = path.resolve(target);
+  return resolved === root || resolved.startsWith(root + path.sep);
+}
 
 async function resolveSkillPath(pluginDir: string, skillName: string): Promise<string | null> {
-  // Check in plugin skills directory
+  // Check in plugin skills directory (must stay inside the plugin)
   const localSkillMd = path.join(pluginDir, "skills", skillName, "SKILL.md");
-  if (fs.existsSync(localSkillMd)) return localSkillMd;
-
   const localSkillMdDisabled = path.join(pluginDir, "skills", skillName, "SKILL.md.disabled");
-  if (fs.existsSync(localSkillMdDisabled)) return localSkillMdDisabled;
+  if (isInsideDir(pluginDir, localSkillMd) && isInsideDir(pluginDir, localSkillMdDisabled)) {
+    if (fs.existsSync(localSkillMd)) return localSkillMd;
+    if (fs.existsSync(localSkillMdDisabled)) return localSkillMdDisabled;
+  }
 
   // Check in global skills directory
   const globalSkillMd = path.join(os.homedir(), ".claude", "skills", skillName, "SKILL.md");
@@ -337,7 +353,10 @@ function parseArgumentHintToParameters(hint: string): any {
   const required: string[] = [];
 
   // Find any bracketed params e.g. [type] or <type>
-  const positionalMatches = hint.matchAll(/[\[<]([a-zA-Z0-9_-]+)[\]>]/g);
+  // Strip "--opt <value>" pairs first so their value placeholders are not
+  // mistaken for positionals (the option loop below handles them).
+  const positionalHint = hint.replace(/--[a-zA-Z0-9_-]+(?:\s+[<\[][a-zA-Z0-9_-]+[>\]])?/g, "");
+  const positionalMatches = positionalHint.matchAll(/[\[<]([a-zA-Z0-9_-]+)[\]>]/g);
   for (const match of positionalMatches) {
     const name = match[1];
     properties[name] = {

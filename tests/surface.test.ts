@@ -11,7 +11,7 @@ import path from "path";
 import os from "os";
 import { __testing } from "../src/commands/surface";
 
-const { compareVersions, latestVersionDir } = __testing;
+const { compareVersions, latestVersionDir, compileGeminiGem, parseArgumentHintToParameters } = __testing;
 
 let tmpRoot: string;
 
@@ -50,6 +50,13 @@ describe("compareVersions", () => {
   it("falls back to string order for non-numeric segments", () => {
     expect(compareVersions("1.0.0-alpha", "1.0.0-beta")).toBeLessThan(0);
   });
+
+  it("orders a prerelease below its release", () => {
+    expect(compareVersions("1.0.0-alpha", "1.0.0")).toBeLessThan(0);
+    expect(compareVersions("1.0.0", "1.0.0-alpha")).toBeGreaterThan(0);
+    expect(compareVersions("2.0.0-rc.1", "2.0.0")).toBeLessThan(0);
+    expect(resolveAmong(["1.0.0-alpha", "1.0.0"])).toBe("1.0.0");
+  });
 });
 
 describe("latestVersionDir", () => {
@@ -85,5 +92,53 @@ describe("latestVersionDir", () => {
 
   it("handles a single version", () => {
     expect(resolveAmong(["0.1.0"])).toBe("0.1.0");
+  });
+});
+
+describe("parseArgumentHintToParameters", () => {
+  it("does not read an option's value placeholder as a positional", () => {
+    const { properties } = parseArgumentHintToParameters("<type> --base <branch>");
+    expect(Object.keys(properties).sort()).toEqual(["base", "type"]);
+  });
+
+  it("still finds positionals that follow an option", () => {
+    const { properties } = parseArgumentHintToParameters("--base <branch> [target]");
+    expect(Object.keys(properties).sort()).toEqual(["base", "target"]);
+  });
+});
+
+describe("compileGeminiGem rule containment", () => {
+  const origHome = process.env.HOME;
+  const origCwd = process.cwd();
+
+  afterEach(() => {
+    process.chdir(origCwd);
+    if (origHome === undefined) delete process.env.HOME;
+    else process.env.HOME = origHome;
+  });
+
+  it("skips rule paths that escape the plugin directory", async () => {
+    const home = path.join(tmpRoot, "home");
+    const pluginDir = path.join(home, ".claude", "plugins", "guarded");
+    fs.ensureDirSync(path.join(pluginDir, "rules"));
+    fs.writeFileSync(path.join(pluginDir, "rules", "inside.md"), "INSIDE-RULE-BODY");
+    fs.writeFileSync(path.join(home, ".claude", "plugins", "outside.md"), "OUTSIDE-SECRET-BODY");
+    fs.writeJsonSync(path.join(pluginDir, "plugin.json"), {
+      name: "guarded",
+      rules: ["rules/inside.md", "../outside.md"],
+    });
+    const work = path.join(tmpRoot, "work");
+    fs.ensureDirSync(work);
+    process.env.HOME = home;
+    process.chdir(work);
+
+    await compileGeminiGem("guarded");
+
+    const out = fs.readFileSync(
+      path.join(work, "out", "surfaces", "guarded", "gemini-gem", "system_instructions.txt"),
+      "utf8"
+    );
+    expect(out).toContain("INSIDE-RULE-BODY");
+    expect(out).not.toContain("OUTSIDE-SECRET-BODY");
   });
 });
