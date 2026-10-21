@@ -3,6 +3,9 @@
  *
  * Only the statically decidable subset is implemented:
  *   (a) job-level or step-level `continue-on-error: true`   (medium)
+ *       — info instead when it is job-level and the job's own `name:`
+ *       contains the word "advisory" (issue #187): the job says what it is,
+ *       which is the resolution this rule's hint offers.
  *   (b) a run step invoking a test/lint tool AND suppressed
  *       by a trailing `|| true` / `exit 0`                  (high)
  *   (c) `--passWithNoTests` / `passWithNoTests: true`        (medium)
@@ -50,20 +53,47 @@ interface WorkflowHit {
   text: string;
   scope: "job" | "step";
   job: string | null;
+  /** Line of the job key this hit sits under; identifies the job occurrence. */
+  jobLine: number | null;
+}
+
+const ADVISORY = /\badvisory\b/i;
+
+/**
+ * `name: "Foo (advisory)"` -> `Foo (advisory)`. A quoted value keeps any `#`
+ * inside the quotes; an unquoted one drops a trailing ` # comment`.
+ */
+function scalarValue(raw: string): string {
+  const v = raw.trim();
+  const quoted = /^(["'])(.*?)\1(?:\s+#.*)?$/.exec(v);
+  if (quoted) return quoted[2];
+  return v.replace(/\s+#.*$/, "").trim();
 }
 
 function scanWorkflow(
   relFile: string,
   content: string,
-): { continueOnError: WorkflowHit[]; suppressed: WorkflowHit[]; passNoTests: WorkflowHit[] } {
+): {
+  continueOnError: WorkflowHit[];
+  suppressed: WorkflowHit[];
+  passNoTests: WorkflowHit[];
+  jobNames: Map<number, string>;
+} {
   const lines = content.split("\n");
   const continueOnError: WorkflowHit[] = [];
   const suppressed: WorkflowHit[] = [];
   const passNoTests: WorkflowHit[] = [];
+  // Job-key line -> the job's own `name:` (a direct child of the job key, never
+  // a step's `- name:`). Collected over the whole file because `name:` may come
+  // after `continue-on-error:`. Keyed by line, not job id, so a repeated job id
+  // cannot lend one job's advisory name to another.
+  const jobNames = new Map<number, string>();
 
   let jobsIndent: number | null = null;
   let jobKeyIndent: number | null = null;
   let currentJob: string | null = null;
+  let currentJobLine: number | null = null;
+  let jobChildIndent: number | null = null;
   let stepsIndent: number | null = null;
 
   for (let i = 0; i < lines.length; i++) {
@@ -82,7 +112,10 @@ function scanWorkflow(
       if (jobKey && (jobKeyIndent === null || indent === jobKeyIndent)) {
         jobKeyIndent = indent;
         currentJob = jobKey[1];
+        currentJobLine = i + 1;
+        jobChildIndent = null;
         stepsIndent = null;
+        continue;
       } else if (
         currentJob !== null &&
         /^steps:\s*$/.test(trimmed) &&
@@ -91,9 +124,17 @@ function scanWorkflow(
       ) {
         stepsIndent = indent;
       }
+      if (currentJob !== null && jobKeyIndent !== null && indent > jobKeyIndent) {
+        if (jobChildIndent === null) jobChildIndent = indent;
+        const name = /^name:\s*(.+)$/.exec(trimmed);
+        if (name && indent === jobChildIndent && currentJobLine !== null) {
+          jobNames.set(currentJobLine, scalarValue(name[1]));
+        }
+      }
     } else if (jobsIndent !== null && indent <= jobsIndent) {
       // Left the jobs: block entirely.
       currentJob = null;
+      currentJobLine = null;
       stepsIndent = null;
     }
 
@@ -105,6 +146,7 @@ function scanWorkflow(
       text: trimmed,
       scope,
       job: currentJob,
+      jobLine: currentJobLine,
     };
 
     if (/^continue-on-error:\s*true\s*$/.test(trimmed)) {
@@ -118,7 +160,7 @@ function scanWorkflow(
     }
   }
 
-  return { continueOnError, suppressed, passNoTests };
+  return { continueOnError, suppressed, passNoTests, jobNames };
 }
 
 export async function nonFailingCiGate(facts: GitFacts): Promise<Finding[]> {
@@ -145,12 +187,35 @@ export async function nonFailingCiGate(facts: GitFacts): Promise<Finding[]> {
     } catch {
       continue;
     }
-    const { continueOnError, suppressed, passNoTests } = scanWorkflow(
+    const { continueOnError, suppressed, passNoTests, jobNames } = scanWorkflow(
       rel,
       content,
     );
 
     for (const hit of continueOnError) {
+      const jobName = hit.jobLine !== null ? jobNames.get(hit.jobLine) : undefined;
+      if (hit.scope === "job" && jobName !== undefined && ADVISORY.test(jobName)) {
+        findings.push({
+          id: `non-failing-ci-gate:continue-on-error:${rel}:${hit.line}`,
+          severity: "info",
+          title: `Declared-advisory job ${hit.job} in ${rel} sets continue-on-error: true`,
+          description:
+            `${rel}:${hit.line} sets \`continue-on-error: true\` on job ` +
+            `${hit.job}, whose name ("${jobName}") declares it advisory. It ` +
+            `cannot fail the workflow, and says so.`,
+          evidence: {
+            rule: "non-failing-ci-gate",
+            detector: "continue-on-error",
+            path: rel,
+            line: hit.line,
+            scope: hit.scope,
+            job: hit.job,
+            job_name: jobName,
+            text: hit.text,
+          },
+        });
+        continue;
+      }
       findings.push({
         id: `non-failing-ci-gate:continue-on-error:${rel}:${hit.line}`,
         severity: "medium",
@@ -172,8 +237,13 @@ export async function nonFailingCiGate(facts: GitFacts): Promise<Finding[]> {
           text: hit.text,
         },
         remediation_hint:
-          "If the job is meant to gate merges, drop continue-on-error. If it is " +
-          "advisory, say so in the job name so readers are not misled.",
+          hit.scope === "job"
+            ? "If the job is meant to gate merges, drop continue-on-error. If it " +
+              "is advisory, put the word \"advisory\" in the job's name: and this " +
+              "finding drops to info."
+            : "If the step is meant to gate merges, drop continue-on-error. If it " +
+              "is advisory, move it into its own job whose name: says " +
+              "\"advisory\" and set continue-on-error on that job instead.",
       });
     }
 

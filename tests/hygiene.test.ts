@@ -321,6 +321,110 @@ describe("rule 5: non-failing-ci-gate", () => {
     });
   });
 
+  // Issue #187: the hint offers "say so in the job name" as the resolution, so
+  // following it must change the verdict.
+  const advisoryCase = async (jobBody: string[]) => {
+    const workflow = [
+      "name: Parity",
+      "on: [push]",
+      "jobs:",
+      "  parity:",
+      ...jobBody,
+      "",
+    ].join("\n");
+    const repo = createRepo({
+      committed: {
+        "package.json": PACKAGE_JSON,
+        ".github/workflows/parity.yml": workflow,
+      },
+    });
+    return byRule(await scanRepo(repo), "non-failing-ci-gate");
+  };
+
+  it("drops job-level continue-on-error to info when the job's name says advisory", async () => {
+    // name: comes AFTER continue-on-error and is quoted — both must still count.
+    const hits = await advisoryCase([
+      "    runs-on: ubuntu-latest",
+      "    continue-on-error: true",
+      '    name: "Python Parity Tests (advisory)"',
+      "    steps:",
+      "      - run: npm test",
+    ]);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].severity).toBe("info");
+    expect(hits[0].evidence).toMatchObject({
+      scope: "job",
+      job: "parity",
+      job_name: "Python Parity Tests (advisory)",
+    });
+  });
+
+  it("keeps step-level continue-on-error medium inside an advisory-named job", async () => {
+    const hits = await advisoryCase([
+      "    name: Parity (advisory)",
+      "    runs-on: ubuntu-latest",
+      "    steps:",
+      "      - name: Attest",
+      "        continue-on-error: true",
+      "        run: npm run build",
+    ]);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].severity).toBe("medium");
+    expect(hits[0].evidence).toMatchObject({ scope: "step" });
+  });
+
+  it("does not take a step's name, or 'advisory' inside a word, as the job's name", async () => {
+    const hits = await advisoryCase([
+      "    name: Nonadvisory parity",
+      "    runs-on: ubuntu-latest",
+      "    continue-on-error: true",
+      "    steps:",
+      "      - name: advisory check",
+      "        run: npm test",
+    ]);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].severity).toBe("medium");
+    expect(hits[0].remediation_hint).toContain('put the word "advisory" in the job\'s name:');
+  });
+
+  it("ignores a step name in the job-key column and keeps a quoted '#' in the job name", async () => {
+    // steps listed flush with their key put `- name:` in the job-child column.
+    const flush = await advisoryCase([
+      "    runs-on: ubuntu-latest",
+      "    continue-on-error: true",
+      "    steps:",
+      "    - name: advisory smoke",
+      "      run: npm test",
+    ]);
+    expect(flush.map((h) => h.severity)).toEqual(["medium"]);
+
+    const hashed = await advisoryCase([
+      "    # first child is a comment; it must not set the job-child column",
+      '    name: "Parity #advisory" # trailing comment',
+      "    runs-on: ubuntu-latest",
+      "    continue-on-error: true",
+      "    steps:",
+      "      - run: npm test",
+    ]);
+    expect(hashed[0].severity).toBe("info");
+    expect(hashed[0].evidence).toMatchObject({ job_name: "Parity #advisory" });
+  });
+
+  it("does not lend an advisory name to another job with the same id", async () => {
+    const hits = await advisoryCase([
+      "    runs-on: ubuntu-latest",
+      "    continue-on-error: true",
+      "    steps:",
+      "      - run: npm test",
+      "  parity:",
+      "    name: Parity (advisory)",
+      "    runs-on: ubuntu-latest",
+      "    steps:",
+      "      - run: npm test",
+    ]);
+    expect(hits.map((h) => h.severity)).toEqual(["medium"]);
+  });
+
   it("flags a test step suppressed with `npm test || true` as high", async () => {
     const workflow = [
       "name: CI",
