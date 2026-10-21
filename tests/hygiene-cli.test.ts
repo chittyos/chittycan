@@ -23,6 +23,9 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { assertOwnRepo } from "./helpers/own-repo.js";
+import { allowForProcessSpawns } from "./helpers/spawn-timeout.js";
+
+allowForProcessSpawns();
 
 const ROOT = path.resolve(__dirname, "..");
 const CLI = path.join(ROOT, "dist", "index.js");
