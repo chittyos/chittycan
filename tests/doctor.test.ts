@@ -23,12 +23,12 @@ function run(env: NodeJS.ProcessEnv): { code: number; stdout: string } {
 
 let fakeHome: string;
 
+// dist/ is built once by tests/global-setup.ts, never here (issue #184).
 beforeAll(() => {
-  spawnSync("npm", ["run", "build"], { cwd: ROOT, stdio: "ignore" });
   expect(fs.existsSync(CLI)).toBe(true);
 
   fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "chittycan-doctor-"));
-}, 60_000);
+});
 
 describe("doctor: credential-at-rest hard block", () => {
   it("flags a credential env var even when its value is an empty string", () => {

@@ -5,6 +5,9 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
+    // Build dist/ once before any worker starts. Per-file builds raced the
+    // files that spawn dist/index.js (issue #184); see tests/global-setup.ts.
+    globalSetup: ["./tests/global-setup.ts"],
     // Agent worktrees live at .claude/worktrees/<name>/ and src/.claude/worktrees/
     // <name>/, inside the project root, each holding a full checkout pinned to
     // whatever commit it was cut from. vitest's default `exclude` does not cover

@@ -11,8 +11,10 @@
  * capturing that in-process would require spying on process.exit — i.e. faking
  * the exact thing being asserted. Real git repos, real files, real subprocess.
  *
- * beforeAll runs `npm run build` unconditionally. A staleness heuristic would
- * let a green suite run against a dist/ that is not the code under review.
+ * dist/ is built unconditionally, once per run, by tests/global-setup.ts. A
+ * staleness heuristic would let a green suite run against a dist/ that is not
+ * the code under review, and a per-file build here would rewrite dist/ while
+ * other files spawn it (issue #184).
  */
 
 import { describe, it, expect, beforeAll } from "vitest";
@@ -59,7 +61,6 @@ let cleanRepo: string;
 let bigRepo: string;
 
 beforeAll(() => {
-  execFileSync("npm", ["run", "build"], { cwd: ROOT, stdio: "ignore" });
   expect(fs.existsSync(CLI)).toBe(true);
 
   cleanRepo = newRepo("clean");
