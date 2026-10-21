@@ -27,6 +27,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { assertOwnRepo } from "./own-repo.js";
 
 const created: string[] = [];
 
@@ -62,6 +63,7 @@ export function createRepo(spec: RepoSpec = {}): string {
   created.push(root);
 
   git(root, ["init", "-b", "main", "--quiet"]);
+  assertOwnRepo(root);
   git(root, ["config", "--local", "user.email", "ci@chitty.cc"]);
   git(root, ["config", "--local", "user.name", "ChittyCan CI"]);
   git(root, ["config", "--local", "commit.gpgsign", "false"]);
