@@ -16,7 +16,7 @@ jobs:
     name: Lockfile present
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # gates/dependency-audit guards every step on `package-lock.json` being
       # present and otherwise echoes and reports green. That is the correct
       # default for the shared workflow (pnpm repos have no npm lockfile), but

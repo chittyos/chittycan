@@ -21,7 +21,7 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -89,7 +89,7 @@ jobs:
       # Not persisted: `npm ci` below runs lifecycle scripts, and the checkout
       # credential carries packages: write. The publish gets its credential from
       # NODE_AUTH_TOKEN instead.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -136,7 +136,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Extract version
         id: version

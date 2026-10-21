@@ -40,7 +40,7 @@ jobs:
   branch-hygiene:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Every branch is judged against the default branch, so shallow
           # history makes `unique`/`behind` counts meaningless rather than
