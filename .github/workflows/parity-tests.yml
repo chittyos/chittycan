@@ -9,7 +9,7 @@ on:
 
 jobs:
   parity-python:
-    name: Python Parity Tests
+    name: Python Parity Tests (advisory)
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
@@ -32,7 +32,7 @@ jobs:
           python3 tests/parity_py.py
 
   parity-node:
-    name: Node.js Parity Tests
+    name: Node.js Parity Tests (advisory)
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
