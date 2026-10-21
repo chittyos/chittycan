@@ -5,6 +5,27 @@ All notable changes to ChittyCan will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.7] - 2026-10-21
+
+### Fixed
+
+- `can remote`, `can hook`, `can ext`, `can mcp`, `can nudge`, `can dna`,
+  `can connect`, `can propose` and `can sync` with no subcommand crashed with
+  `TypeError: yargs.showHelp is not a function`. They now print that
+  command's help and exit 0 (#193).
+- The quick stemcell brief and the OpenAI plugin's brief path failed with
+  `ERR_MODULE_NOT_FOUND`: the build shipped an unresolved `@/lib/stemcell`
+  import (#193).
+- `can hygiene` no longer reports a medium `non-failing-ci-gate` finding for
+  a job that sets `continue-on-error: true` and whose name says "advisory".
+  It is reported at info instead, as the finding's own advice promised
+  (#187, #192).
+
+### Changed
+
+- yargs 17 → 18 (#174).
+- Built with TypeScript `NodeNext` module resolution; no path aliases (#193).
+
 ## [0.6.6] - 2026-10-19
 
 ### Changed
