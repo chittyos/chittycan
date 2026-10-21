@@ -42,13 +42,13 @@ export async function syncSetup(): Promise<void> {
 
   const { notionRemote, githubRemote } = await inquirer.prompt([
     {
-      type: "list",
+      type: "select",
       name: "notionRemote",
       message: "Notion database to sync",
       choices: notionRemotes
     },
     {
-      type: "list",
+      type: "select",
       name: "githubRemote",
       message: "GitHub project to sync",
       choices: githubRemotes

@@ -124,7 +124,7 @@ export async function installMcpConfig(): Promise<void> {
     console.log(chalk.yellow("\nMemoryCloude requires a SQL database to persist context."));
     const { dbChoice } = await inquirer.prompt([
       {
-        type: "list",
+        type: "select",
         name: "dbChoice",
         message: "How would you like to set up the backend?",
         choices: [
@@ -157,7 +157,7 @@ export async function installMcpConfig(): Promise<void> {
   console.log(chalk.bold("\n🔧 Installation Mode"));
   const { installMode } = await inquirer.prompt([
     {
-      type: "list",
+      type: "select",
       name: "installMode",
       message: "Where should the MCP adapter be installed?",
       choices: [
@@ -260,7 +260,7 @@ export async function installMcpConfig(): Promise<void> {
     // Ask which editor to create pointers for
     const { targetEditor } = await inquirer.prompt([
       {
-        type: "list",
+        type: "select",
         name: "targetEditor",
         message: "Which AI Editor are you targeting for these local projects?",
         choices: [

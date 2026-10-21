@@ -277,7 +277,7 @@ export async function restoreDNACommand(): Promise<void> {
   }));
 
   const { timestamp } = await inquirer.prompt([{
-    type: 'list',
+    type: 'select',
     name: 'timestamp',
     message: 'Select snapshot to restore:',
     choices

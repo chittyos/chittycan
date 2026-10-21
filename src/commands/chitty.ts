@@ -533,7 +533,7 @@ async function handleMissingRemote(cli: SupportedCLI, cliConfig: any): Promise<v
   );
 
   const { action } = await inquirer.prompt([{
-    type: "list",
+    type: "select",
     name: "action",
     message: "What would you like to do?",
     choices: options

@@ -15,7 +15,7 @@ export async function nudgeNow(): Promise<void> {
 
   // Ask which remote to update
   const { remoteName } = await inquirer.prompt([{
-    type: "list",
+    type: "select",
     name: "remoteName",
     message: "Which tracker do you want to update?",
     choices: remoteNames
@@ -26,7 +26,7 @@ export async function nudgeNow(): Promise<void> {
   // If it's a Notion database with views, ask which view
   if (remote.type === "notion-database" && remote.views && Object.keys(remote.views).length > 0) {
     const { viewName } = await inquirer.prompt([{
-      type: "list",
+      type: "select",
       name: "viewName",
       message: "Which view?",
       choices: [
@@ -42,7 +42,7 @@ export async function nudgeNow(): Promise<void> {
 
   // Ask what they did
   const { action } = await inquirer.prompt([{
-    type: "list",
+    type: "select",
     name: "action",
     message: "What are you updating?",
     choices: [

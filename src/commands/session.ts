@@ -20,7 +20,7 @@ export async function sessionStartCommand(options: { project?: string }): Promis
   // The Crossroads: How to staff the session
   const { action } = await inquirer.prompt([
     {
-      type: 'list',
+      type: 'select',
       name: 'action',
       message: 'How would you like to staff this session?',
       choices: [
@@ -43,7 +43,7 @@ export async function sessionStartCommand(options: { project?: string }): Promis
     // Simulate fork selection
     const { entityToFork } = await inquirer.prompt([
       {
-        type: 'list',
+        type: 'select',
         name: 'entityToFork',
         message: 'Select an Entity to fork:',
         choices: [
