@@ -53,15 +53,21 @@ interface WorkflowHit {
   text: string;
   scope: "job" | "step";
   job: string | null;
+  /** Line of the job key this hit sits under; identifies the job occurrence. */
+  jobLine: number | null;
 }
 
 const ADVISORY = /\badvisory\b/i;
 
-/** `name: "Foo (advisory)"` -> `Foo (advisory)`. Drops a trailing ` # comment`. */
+/**
+ * `name: "Foo (advisory)"` -> `Foo (advisory)`. A quoted value keeps any `#`
+ * inside the quotes; an unquoted one drops a trailing ` # comment`.
+ */
 function scalarValue(raw: string): string {
-  const v = raw.replace(/\s+#.*$/, "").trim();
-  const quoted = /^(["'])(.*)\1$/.exec(v);
-  return quoted ? quoted[2] : v;
+  const v = raw.trim();
+  const quoted = /^(["'])(.*?)\1(?:\s+#.*)?$/.exec(v);
+  if (quoted) return quoted[2];
+  return v.replace(/\s+#.*$/, "").trim();
 }
 
 function scanWorkflow(
@@ -71,20 +77,22 @@ function scanWorkflow(
   continueOnError: WorkflowHit[];
   suppressed: WorkflowHit[];
   passNoTests: WorkflowHit[];
-  jobNames: Map<string, string>;
+  jobNames: Map<number, string>;
 } {
   const lines = content.split("\n");
   const continueOnError: WorkflowHit[] = [];
   const suppressed: WorkflowHit[] = [];
   const passNoTests: WorkflowHit[] = [];
-  // Job key -> the job's own `name:` (a direct child of the job key, never a
-  // step's `- name:`). Collected over the whole file because `name:` may come
-  // after `continue-on-error:`.
-  const jobNames = new Map<string, string>();
+  // Job-key line -> the job's own `name:` (a direct child of the job key, never
+  // a step's `- name:`). Collected over the whole file because `name:` may come
+  // after `continue-on-error:`. Keyed by line, not job id, so a repeated job id
+  // cannot lend one job's advisory name to another.
+  const jobNames = new Map<number, string>();
 
   let jobsIndent: number | null = null;
   let jobKeyIndent: number | null = null;
   let currentJob: string | null = null;
+  let currentJobLine: number | null = null;
   let jobChildIndent: number | null = null;
   let stepsIndent: number | null = null;
 
@@ -104,6 +112,7 @@ function scanWorkflow(
       if (jobKey && (jobKeyIndent === null || indent === jobKeyIndent)) {
         jobKeyIndent = indent;
         currentJob = jobKey[1];
+        currentJobLine = i + 1;
         jobChildIndent = null;
         stepsIndent = null;
         continue;
@@ -118,13 +127,14 @@ function scanWorkflow(
       if (currentJob !== null && jobKeyIndent !== null && indent > jobKeyIndent) {
         if (jobChildIndent === null) jobChildIndent = indent;
         const name = /^name:\s*(.+)$/.exec(trimmed);
-        if (name && indent === jobChildIndent) {
-          jobNames.set(currentJob, scalarValue(name[1]));
+        if (name && indent === jobChildIndent && currentJobLine !== null) {
+          jobNames.set(currentJobLine, scalarValue(name[1]));
         }
       }
     } else if (jobsIndent !== null && indent <= jobsIndent) {
       // Left the jobs: block entirely.
       currentJob = null;
+      currentJobLine = null;
       stepsIndent = null;
     }
 
@@ -136,6 +146,7 @@ function scanWorkflow(
       text: trimmed,
       scope,
       job: currentJob,
+      jobLine: currentJobLine,
     };
 
     if (/^continue-on-error:\s*true\s*$/.test(trimmed)) {
@@ -182,7 +193,7 @@ export async function nonFailingCiGate(facts: GitFacts): Promise<Finding[]> {
     );
 
     for (const hit of continueOnError) {
-      const jobName = hit.job ? jobNames.get(hit.job) : undefined;
+      const jobName = hit.jobLine !== null ? jobNames.get(hit.jobLine) : undefined;
       if (hit.scope === "job" && jobName !== undefined && ADVISORY.test(jobName)) {
         findings.push({
           id: `non-failing-ci-gate:continue-on-error:${rel}:${hit.line}`,
