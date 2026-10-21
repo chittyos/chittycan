@@ -26,6 +26,9 @@ import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync, rmSync, existsSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
+import { allowForProcessSpawns } from "./helpers/spawn-timeout.js";
+
+allowForProcessSpawns();
 
 const REPO = process.cwd();
 const ENTRY = join(REPO, "dist", "index.js");

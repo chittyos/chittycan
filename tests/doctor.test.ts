@@ -12,6 +12,9 @@ import { spawnSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { allowForProcessSpawns } from "./helpers/spawn-timeout.js";
+
+allowForProcessSpawns();
 
 const ROOT = path.resolve(__dirname, "..");
 const CLI = path.join(ROOT, "dist", "index.js");

@@ -14,6 +14,9 @@ import { mkdtempSync, rmSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { allowForProcessSpawns } from "./helpers/spawn-timeout.js";
+
+allowForProcessSpawns();
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ENTRY = join(REPO, "dist", "index.js");

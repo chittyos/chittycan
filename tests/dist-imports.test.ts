@@ -16,6 +16,9 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { allowForProcessSpawns } from "./helpers/spawn-timeout.js";
+
+allowForProcessSpawns();
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DIST = path.join(ROOT, "dist");
