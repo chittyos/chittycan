@@ -5,6 +5,18 @@ All notable changes to ChittyCan will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.8] - 2026-10-21
+
+### Fixed
+
+- Interactive prompts that offer a list of choices crashed with
+  `Prompt type "list" is not registered`: inquirer 14 removed that type. All
+  19 now use `select`, e.g. `can gh` with no GitHub remote configured,
+  `can config` remote editing, `can sync`, `can nudge`, `can dna restore`
+  and `can session start` (#195, #197).
+- `can config` editing an rclone remote crashed when `rclone listremotes`
+  returned nothing; it now says no remotes were found (#197).
+
 ## [0.6.7] - 2026-10-21
 
 ### Fixed
