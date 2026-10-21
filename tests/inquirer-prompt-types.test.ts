@@ -72,17 +72,20 @@ function matchBrace(text: string, open: number): number {
  * Yield every prompt `type:` string literal that appears inside an
  * `inquirer.prompt( ... )` call, within an object that also has a `message:`
  * key. Scoping to the prompt call avoids matching unrelated data objects that
- * happen to pair `type` and `message`. We only read string-literal `type:`
- * values (dynamic types are ignored by design).
+ * happen to pair `type` and `message`. Every quoted string in the `type:`
+ * expression is read, so a ternary of literals is covered; a type held only in
+ * a variable is not.
  */
 function* promptTypeLiterals(
   text: string,
-): Generator<{ type: string; line: number }> {
+): Generator<{ type: string; line: number; call: number }> {
   const CALL = /inquirer\s*\.\s*prompt\s*\(/g;
   for (const call of text.matchAll(CALL)) {
     const openParen = call.index! + call[0].length - 1;
     const closeParen = matchParen(text, openParen);
-    if (closeParen === -1) continue;
+    if (closeParen === -1) {
+      throw new Error(`unbalanced inquirer.prompt( call at offset ${call.index}`);
+    }
     const argsStart = openParen + 1;
     const args = text.slice(argsStart, closeParen);
 
@@ -94,11 +97,15 @@ function* promptTypeLiterals(
       if (end === -1) break;
       const block = args.slice(i, end + 1);
       if (/\bmessage\s*:/.test(block)) {
-        const m = block.match(/\btype\s*:\s*(["'])([^"']+)\1/);
+        // The type may be a literal or an expression of literals
+        // (`sensitive ? "password" : "input"`); read every quoted string in it.
+        const m = block.match(/\btype\s*:\s*([^,\n}]+)/);
         if (m) {
           const absIndex = argsStart + i + block.indexOf(m[0]);
           const line = text.slice(0, absIndex).split("\n").length;
-          yield { type: m[2], line };
+          for (const lit of m[1].matchAll(/(["'])([^"']+)\1/g)) {
+            yield { type: lit[2], line, call: call.index! };
+          }
         }
       }
       i = end; // skip past this object; nested objects are covered by block scan
@@ -111,6 +118,24 @@ describe("inquirer prompt types (issue #195)", () => {
 
   it("scans a non-empty source tree", () => {
     expect(files.length).toBeGreaterThan(0);
+  });
+
+  // The scanner walks parens and braces without skipping strings, so an
+  // unmatched "(" or "{" in a message could end a call's scan early and hide
+  // later prompts. Require every inquirer.prompt( call to yield a typed prompt.
+  it("reads a typed prompt from every inquirer.prompt( call", () => {
+    const missed: string[] = [];
+    for (const file of files) {
+      const text = fs.readFileSync(file, "utf8");
+      const calls = [...text.matchAll(/inquirer\s*\.\s*prompt\s*\(/g)].map((c) => c.index!);
+      const typed = new Set([...promptTypeLiterals(text)].map((p) => p.call));
+      for (const at of calls) {
+        if (!typed.has(at)) {
+          missed.push(`${path.relative(ROOT, file)}:${text.slice(0, at).split("\n").length}`);
+        }
+      }
+    }
+    expect(missed, `prompt calls with no typed prompt read:\n${missed.join("\n")}`).toEqual([]);
   });
 
   it('has no `type: "list"` / `type: \'list\'` prompts in src/', () => {

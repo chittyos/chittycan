@@ -1176,6 +1176,13 @@ async function editRcloneRemote(cfg: Config, name: string, current: RcloneRemote
     return;
   }
 
+  // select throws "No selectable choices" on an empty list.
+  if (rcloneRemotes.length === 0) {
+    console.log("No rclone remotes found");
+    console.log("Run 'rclone config' to set up remotes");
+    return;
+  }
+
   const ans = await inquirer.prompt([
     {
       type: "select",
