@@ -65,6 +65,19 @@ describe("CLI output on a clean HOME", () => {
     expect(r.out).not.toMatch(/run: chitty /i);
   });
 
+  // Under node10 resolution these fallbacks called the yargs module's
+  // `showHelp`, which does not exist at runtime: every one of these crashed
+  // with "yargs.showHelp is not a function" in 0.6.6.
+  it.each(["remote", "hook", "ext", "mcp", "nudge", "dna", "connect", "propose", "sync"])(
+    "`can %s` with no subcommand prints help instead of crashing",
+    (cmd) => {
+      const r = can(cmd);
+      expect(r.out).not.toContain("is not a function");
+      expect(r.out).toContain("Commands:");
+      expect(r.status).toBe(0);
+    },
+  );
+
   it("ext install fails instead of printing steps that cannot work", () => {
     const r = can("ext", "install", "some-extension");
     expect(r.status).toBe(1);
