@@ -117,7 +117,7 @@ async function showAndHandleSuggestions(suggestions: any[]): Promise<void> {
 
     const { action } = await inquirer.prompt([
       {
-        type: "list",
+        type: "select",
         name: "action",
         message: "What would you like to do?",
         choices: [

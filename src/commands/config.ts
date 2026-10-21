@@ -118,7 +118,7 @@ export async function configMenu(pluginLoader: PluginLoader): Promise<void> {
     }
 
     const { name } = await inquirer.prompt([{
-      type: "list",
+      type: "select",
       name: "name",
       message: "Choose a remote",
       choices: names
@@ -159,7 +159,7 @@ async function addRemote(cfg: Config, pluginLoader: PluginLoader): Promise<void>
   const pluginRemoteTypes = loadPluginRemoteTypes(pluginLoader);
 
   const { remoteType } = await inquirer.prompt([{
-    type: "list",
+    type: "select",
     name: "remoteType",
     message: "Remote type",
     choices: [
@@ -845,7 +845,7 @@ async function addNeonRemote(cfg: Config): Promise<void> {
   console.log("");
 
   const { configMethod } = await inquirer.prompt([{
-    type: "list",
+    type: "select",
     name: "configMethod",
     message: "Configuration method",
     choices: [
@@ -957,7 +957,7 @@ async function addCloudflareRemote(cfg: Config): Promise<void> {
       validate: (v: string) => v ? true : "Required"
     },
     {
-      type: "list",
+      type: "select",
       name: "resource",
       message: "Resource type",
       choices: [
@@ -1032,7 +1032,7 @@ async function addRcloneRemote(cfg: Config): Promise<void> {
       validate: (v: string) => v ? true : "Required"
     },
     {
-      type: "list",
+      type: "select",
       name: "remoteName",
       message: "Select rclone remote",
       choices: rcloneRemotes
@@ -1176,9 +1176,16 @@ async function editRcloneRemote(cfg: Config, name: string, current: RcloneRemote
     return;
   }
 
+  // select throws "No selectable choices" on an empty list.
+  if (rcloneRemotes.length === 0) {
+    console.log("No rclone remotes found");
+    console.log("Run 'rclone config' to set up remotes");
+    return;
+  }
+
   const ans = await inquirer.prompt([
     {
-      type: "list",
+      type: "select",
       name: "remoteName",
       message: "rclone remote",
       choices: rcloneRemotes,
