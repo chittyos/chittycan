@@ -20,11 +20,14 @@
 import { execFileSync } from "child_process";
 import fs from "fs";
 import path from "path";
+import { stripGitEnv } from "./setup-git-env";
 
 const ROOT = path.resolve(__dirname, "..");
 const CLI = path.join(ROOT, "dist", "index.js");
 
 export default function setup(): void {
+  // Before the build and before any worker is forked (issue #190).
+  stripGitEnv();
   execFileSync("npm", ["run", "build"], { cwd: ROOT, stdio: "inherit" });
   if (!fs.existsSync(CLI)) {
     throw new Error(`npm run build succeeded but ${CLI} does not exist`);

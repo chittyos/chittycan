@@ -12,7 +12,14 @@
  * Stripping here covers all three paths at once. Tests that need a GIT_*
  * variable (GIT_AUTHOR_NAME, GIT_CONFIG_GLOBAL, ...) still set it explicitly in
  * the env they pass, after spreading process.env.
+ *
+ * tests/global-setup.ts calls stripGitEnv() too, so the vitest main process —
+ * and every worker it forks afterwards — is clean before the dist/ build runs.
  */
-for (const key of Object.keys(process.env)) {
-  if (key.startsWith("GIT_")) delete process.env[key];
+export function stripGitEnv(): void {
+  for (const key of Object.keys(process.env)) {
+    if (key.startsWith("GIT_")) delete process.env[key];
+  }
 }
+
+stripGitEnv();

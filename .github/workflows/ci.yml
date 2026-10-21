@@ -28,6 +28,14 @@ jobs:
 
       - name: Test
         run: npm test
+        # Hook-style GIT_* pointing at a repo that does not exist. The suite
+        # must strip them (tests/setup-git-env.ts, issue #190); if it stops
+        # doing so, every fixture's git call fails here instead of passing in
+        # CI and writing into the real repo when run from a git hook.
+        env:
+          GIT_DIR: /nonexistent/hook-git-dir
+          GIT_WORK_TREE: /nonexistent/hook-work-tree
+          GIT_INDEX_FILE: /nonexistent/hook-git-dir/index
 
   cross-platform-smoke:
     name: Smoke Test (${{ matrix.os }})
