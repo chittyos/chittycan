@@ -74,6 +74,8 @@ describe("CLI output on a clean HOME", () => {
       const r = can(cmd);
       expect(r.out).not.toContain("is not a function");
       expect(r.out).toContain("Commands:");
+      // Scoped to the parent command, not the root help.
+      expect(r.out).toContain(`can ${cmd} `);
       expect(r.status).toBe(0);
     },
   );
