@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { assertOwnRepo } from "./helpers/own-repo.js";
 import { planBranches } from "../src/lib/hygiene/branches.js";
 import type { BranchCredibility } from "../src/lib/hygiene/policy.js";
 
@@ -11,6 +12,7 @@ function repo(): string {
   const d = mkdtempSync(join(tmpdir(), "hyg-br-"));
   const g = (...a: string[]) => execFileSync("git", ["-C", d, ...a], { encoding: "utf8" });
   g("init", "-q", "-b", "main");
+  assertOwnRepo(d);
   g("config", "user.name", "t");
   g("config", "user.email", "t@t");
   writeFileSync(join(d, "f.txt"), "v1");

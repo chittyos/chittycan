@@ -23,6 +23,7 @@ import { execFileSync, spawnSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { assertOwnRepo } from "./helpers/own-repo.js";
 
 const ROOT = path.resolve(__dirname, "..");
 const CLI = path.join(ROOT, "dist", "index.js");
@@ -69,6 +70,7 @@ function snapshot(dir: string): Record<string, string> {
 function newFixableRepo(label: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `chittycan-hygfix-${label}-`));
   git(dir, "init", "-q");
+  assertOwnRepo(dir);
   git(dir, "config", "user.email", "hygiene-test@chitty.cc");
   git(dir, "config", "user.name", "hygiene-test");
   const pkg = { name: "fixture-repo", version: "1.0.0", scripts: { test: "vitest run" } };

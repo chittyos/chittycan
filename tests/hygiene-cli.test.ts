@@ -22,6 +22,7 @@ import { execFileSync, spawnSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { assertOwnRepo } from "./helpers/own-repo.js";
 
 const ROOT = path.resolve(__dirname, "..");
 const CLI = path.join(ROOT, "dist", "index.js");
@@ -43,6 +44,7 @@ function git(cwd: string, ...args: string[]): void {
 function newRepo(label: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `chittycan-hygiene-${label}-`));
   git(dir, "init", "-q");
+  assertOwnRepo(dir);
   git(dir, "config", "user.email", "hygiene-test@chitty.cc");
   git(dir, "config", "user.name", "hygiene-test");
   return dir;

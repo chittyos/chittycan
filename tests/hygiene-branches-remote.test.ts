@@ -11,6 +11,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { assertOwnRepo } from "./helpers/own-repo.js";
 import { planBranches } from "../src/lib/hygiene/branches.js";
 import { collectRemoteBranchFacts } from "../src/lib/hygiene/workflow-facts.js";
 
@@ -34,9 +35,11 @@ const git = (d: string, ...a: string[]) =>
 function cloned(): { work: string; origin: string } {
   const origin = mkdtempSync(join(tmpdir(), "hyg-rem-origin-"));
   execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin], { env: HERMETIC });
+  assertOwnRepo(origin);
 
   const seed = mkdtempSync(join(tmpdir(), "hyg-rem-seed-"));
   execFileSync("git", ["init", "-q", "-b", "main", seed], { env: HERMETIC });
+  assertOwnRepo(seed);
   git(seed, "config", "user.name", "t");
   git(seed, "config", "user.email", "t@t");
   writeFileSync(join(seed, "f.txt"), "v1");
@@ -47,6 +50,7 @@ function cloned(): { work: string; origin: string } {
 
   const work = mkdtempSync(join(tmpdir(), "hyg-rem-work-"));
   execFileSync("git", ["clone", "-q", origin, work], { env: HERMETIC });
+  assertOwnRepo(work);
   git(work, "config", "user.name", "t");
   git(work, "config", "user.email", "t@t");
   rmSync(seed, { recursive: true, force: true });
@@ -146,8 +150,10 @@ describe("remote branch mode", () => {
     // reports a clean remote having examined no branches at all.
     const origin = mkdtempSync(join(tmpdir(), "hyg-trunk-origin-"));
     execFileSync("git", ["init", "-q", "--bare", "-b", "trunk", origin], { env: HERMETIC });
+    assertOwnRepo(origin);
     const seed = mkdtempSync(join(tmpdir(), "hyg-trunk-seed-"));
     execFileSync("git", ["init", "-q", "-b", "trunk", seed], { env: HERMETIC });
+    assertOwnRepo(seed);
     git(seed, "config", "user.name", "t");
     git(seed, "config", "user.email", "t@t");
     writeFileSync(join(seed, "f.txt"), "v1");
@@ -161,6 +167,7 @@ describe("remote branch mode", () => {
     // Initialised and fetched rather than cloned — so origin/HEAD is absent.
     const work = mkdtempSync(join(tmpdir(), "hyg-trunk-work-"));
     execFileSync("git", ["init", "-q", "-b", "trunk", work], { env: HERMETIC });
+    assertOwnRepo(work);
     git(work, "remote", "add", "origin", origin);
     git(work, "fetch", "-q", "origin", "+refs/heads/*:refs/remotes/origin/*");
     try {
