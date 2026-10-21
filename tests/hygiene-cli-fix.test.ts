@@ -79,10 +79,10 @@ function newFixableRepo(label: string): string {
   return dir;
 }
 
+// dist/ is built once by tests/global-setup.ts, never here (issue #184).
 beforeAll(() => {
-  execFileSync("npm", ["run", "build"], { cwd: ROOT, stdio: "ignore" });
   expect(fs.existsSync(CLI)).toBe(true);
-}, 600_000);
+});
 
 describe("can hygiene --fix", () => {
   it("refuses to run on a dirty worktree: exit 2, nothing written", () => {
