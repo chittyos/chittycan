@@ -1,14 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ESNext",
+    // Plain tsc emit for Node ESM: resolution must match what Node does at runtime.
+    "module": "NodeNext",
     "lib": ["ES2022"],
-    "moduleResolution": "node",
-    // TS 6 deprecates moduleResolution=node10 and baseUrl; both stop working in
-    // TS 7. Silencing keeps the build green on typescript ^6.0.3 without
-    // changing resolution semantics. Migrating to "bundler"/"node16" and
-    // dropping baseUrl is the real fix and must land before TS 7.
-    "ignoreDeprecations": "6.0",
+    "moduleResolution": "NodeNext",
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,
@@ -18,11 +14,7 @@
     "resolveJsonModule": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*"]
-    }
+    "sourceMap": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "tests"]

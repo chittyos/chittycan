@@ -1,5 +1,5 @@
-import type { ChittyPlugin, CommandDefinition, RemoteTypeDefinition } from "@/lib/plugin";
-import type { Config } from "@/lib/config";
+import type { ChittyPlugin, CommandDefinition, RemoteTypeDefinition } from "../../lib/plugin.js";
+import type { Config } from "../../lib/config.js";
 
 interface OllamaRemote {
   type: "ollama";

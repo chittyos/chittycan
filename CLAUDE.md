@@ -33,9 +33,10 @@ dynamic-imports `dist/index.js` — **the CLI only runs against a built `dist/`*
 so run `npm run build` before smoke-testing a command change.
 
 `tsconfig.json` excludes `tests/`, so `npm run lint` does **not** type-check test
-files; vitest transpiles them separately. It also pins `ignoreDeprecations: "6.0"`
-to keep `moduleResolution: node10` + `baseUrl` building on typescript ^6 — both
-stop working in TS 7, and migrating to `bundler`/`node16` must land before then.
+files; vitest transpiles them separately. Resolution is `NodeNext` because `dist/`
+is plain `tsc` output that Node loads directly: relative imports need `.js`, and
+there is no path alias — tsc never rewrites one, so `@/x` shipped as a broken
+runtime import (`tests/dist-imports.test.ts` pins that).
 
 ## Architecture
 
