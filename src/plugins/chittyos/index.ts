@@ -9,7 +9,7 @@
  * - ChittyRouter: AI email gateway and agents
  */
 
-import type { ChittyPlugin } from "@/lib/plugin";
+import type { ChittyPlugin } from "../../lib/plugin.js";
 
 // Import all ChittyOS plugins
 import chittyidPlugin from "./chittyid.js";

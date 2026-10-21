@@ -4,7 +4,7 @@
  * Automatically brief any AI when it pops on
  */
 
-import { generateStemcellBrief, formatStemcellBrief, type StemcellBrief } from "@/lib/stemcell";
+import { generateStemcellBrief, formatStemcellBrief, type StemcellBrief } from "../../lib/stemcell.js";
 
 /**
  * Generate a brief for an AI about to work on a task

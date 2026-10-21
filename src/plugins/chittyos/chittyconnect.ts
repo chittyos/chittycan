@@ -1,4 +1,4 @@
-import type { ChittyPlugin, RemoteTypeDefinition } from "@/lib/plugin";
+import type { ChittyPlugin, RemoteTypeDefinition } from "../../lib/plugin.js";
 
 // This plugin contributes only the "chittyconnect" remote type. It used to also ship a
 // `connect` command tree, but `can connect` is a built-in (src/index.ts) and plugins may

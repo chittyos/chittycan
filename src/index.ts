@@ -171,7 +171,7 @@ const cli = yargs(args)
         }
       ),
     () => {
-      yargs.showHelp();
+      cli.showHelp();
     }
   )
   .command(
@@ -214,7 +214,7 @@ const cli = yargs(args)
           }
         ),
     () => {
-      yargs.showHelp();
+      cli.showHelp();
     }
   )
   .command(
@@ -280,7 +280,7 @@ const cli = yargs(args)
           }
         ),
     () => {
-      yargs.showHelp();
+      cli.showHelp();
     }
   )
   .command(
@@ -336,7 +336,7 @@ const cli = yargs(args)
           }
         ),
     () => {
-      yargs.showHelp();
+      cli.showHelp();
     }
   )
   .command(
@@ -530,7 +530,7 @@ const cli = yargs(args)
           }
         ),
     () => {
-      yargs.showHelp();
+      cli.showHelp();
     }
   )
   .command(
@@ -612,7 +612,7 @@ const cli = yargs(args)
           }
         ),
     () => {
-      yargs.showHelp();
+      cli.showHelp();
     }
   )
   .command(
@@ -665,7 +665,7 @@ const cli = yargs(args)
           }
         ),
     () => {
-      yargs.showHelp();
+      cli.showHelp();
     }
   )
   .command(
@@ -915,7 +915,7 @@ const cli = yargs(args)
           }
         ),
     () => {
-      yargs.showHelp();
+      cli.showHelp();
     }
   )
   .command(
@@ -958,7 +958,7 @@ const cli = yargs(args)
           }
         ),
     () => {
-      yargs.showHelp();
+      cli.showHelp();
     }
   )
   .command(
@@ -1092,7 +1092,7 @@ const cli = yargs(args)
           }
         ),
     () => {
-      yargs.showHelp();
+      cli.showHelp();
     }
   )
   .command(

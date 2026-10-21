@@ -14,7 +14,7 @@
  * - Cohere (Enterprise RAG & chat)
  */
 
-import type { ChittyPlugin } from "@/lib/plugin";
+import type { ChittyPlugin } from "../../lib/plugin.js";
 
 // Import all AI platform plugins
 import openaiPlugin from "./openai.js";
