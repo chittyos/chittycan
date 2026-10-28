@@ -435,19 +435,34 @@ function generateSessionId(): string {
 import { loadConfig } from "../lib/config.js";
 
 /**
- * Fetch database URL from ChittyConnect
- * Routes through connect.chitty.cc which retrieves from 1Password
- * Path format: /api/credentials/{vault}/{item}/{field}
+ * Fetch the ChittyCanon database URL through the configured ChittyConnect broker.
+ * The CLI reuses its existing `chittyconnect` remote rather than embedding a
+ * credential or requiring a duplicate environment variable.
  */
-async function fetchChittyCanonDbUrl(): Promise<string | null> {
+export async function fetchChittyCanonDbUrl(configOverride?: ReturnType<typeof loadConfig>): Promise<string | null> {
   try {
-    const apiKey = process.env.CHITTYCONNECT_API_KEY || "REDACTED_CHITTYCONNECT_API_KEY";
-    const response = await fetch("https://connect.chitty.cc/api/credentials/infrastructure/neon/chittycanon_db_url", {
-      method: "GET",
-      headers: {
-        "X-ChittyOS-API-Key": apiKey
+    const config = configOverride ?? loadConfig();
+    const connectRemote = Object.values(config.remotes || {}).find(
+      (remote: any) => remote?.type === "chittyconnect" && remote?.baseUrl
+    ) as any;
+
+    const apiKey =
+      connectRemote?.apiToken ||
+      process.env.CHITTYCONNECT_API_KEY ||
+      process.env.CHITTY_TOKEN;
+
+    if (!apiKey) return null;
+
+    const baseUrl = String(connectRemote?.baseUrl || "https://connect.chitty.cc").replace(/\/$/, "");
+    const response = await fetch(
+      `${baseUrl}/api/credentials/infrastructure/neon/chittycanon_db_url`,
+      {
+        method: "GET",
+        headers: {
+          "X-ChittyOS-API-Key": apiKey
+        }
       }
-    });
+    );
 
     if (!response.ok) return null;
 
