@@ -137,47 +137,42 @@ export async function configReconcile(options: {
   });
 }
 
-export function registerControlPlaneCommands(cli: any): void {
-  cli.command(
-    "auth",
-    "ChittyOS authentication and custody operations",
-    (y: any) => y
-      .command("login", "Validate an ephemeral control-plane identity", (yy: any) => yy
-        .option("oidc", { type: "boolean", default: false })
-        .option("endpoint", { type: "string", default: DEFAULT_CONNECT_URL })
-        .option("json", { type: "boolean", default: false }), async (argv: any) => {
-          if (!argv.oidc) throw new ControlPlaneError("Only --oidc login is supported by this non-persistent auth command");
-          const token = await getGitHubActionsOidcToken(argv.endpoint as string);
-          const claims = decodeJwtClaims(token);
-          const exp = typeof claims.exp === "number" ? claims.exp : 0;
-          if (exp && exp <= Math.floor(Date.now() / 1000)) throw new ControlPlaneError("GitHub OIDC token is expired");
-          emit({
-            authenticated: true,
-            persistence: "none",
-            issuer: claims.iss ?? null,
-            audience: claims.aud ?? null,
-            repository: claims.repository ?? null,
-            actor: claims.actor ?? null,
-            ref: claims.ref ?? null,
-            expires_at: exp ? new Date(exp * 1000).toISOString() : null,
-          }, Boolean(argv.json));
-        })
-      .command("verify-custody", "Verify broker runtime custody and ledger authority", (yy: any) => yy
-        .option("endpoint", { type: "string", default: DEFAULT_CONNECT_URL })
-        .option("strict", { type: "boolean", default: false })
-        .option("json", { type: "boolean", default: false }), async (argv: any) => {
-          const result = await controlPlaneRequest<any>("/api/v1/health/custody-verify", { endpoint: argv.endpoint as string });
-          if (argv.strict) {
-            const ok = result.github_app_id_present === true && result.github_app_pk_valid === true &&
-              result.broker_signing_key_custody === "verified" && result.ledger_emission_authority === "verified";
-            if (!ok) throw new ControlPlaneError("Custody verification did not satisfy strict closure gate");
-          }
-          emit(result, Boolean(argv.json));
-        })
-      .demandCommand(1),
-    () => cli.showHelp(),
-  );
+export async function authLoginOidcCommand(argv: any): Promise<void> {
+  if (!argv.oidc) {
+    throw new ControlPlaneError("Only --oidc login is supported by this non-persistent auth command");
+  }
+  const endpoint = (argv.endpoint as string | undefined) ?? DEFAULT_CONNECT_URL;
+  const token = await getGitHubActionsOidcToken(endpoint);
+  const claims = decodeJwtClaims(token);
+  const exp = typeof claims.exp === "number" ? claims.exp : 0;
+  if (exp && exp <= Math.floor(Date.now() / 1000)) {
+    throw new ControlPlaneError("GitHub OIDC token is expired");
+  }
+  emit({
+    authenticated: true,
+    persistence: "none",
+    issuer: claims.iss ?? null,
+    audience: claims.aud ?? null,
+    repository: claims.repository ?? null,
+    actor: claims.actor ?? null,
+    ref: claims.ref ?? null,
+    expires_at: exp ? new Date(exp * 1000).toISOString() : null,
+  }, Boolean(argv.json));
+}
 
+export async function authVerifyCustodyCommand(argv: any): Promise<void> {
+  const result = await controlPlaneRequest<any>("/api/v1/health/custody-verify", {
+    endpoint: (argv.endpoint as string | undefined) ?? DEFAULT_CONNECT_URL,
+  });
+  if (argv.strict) {
+    const ok = result.github_app_id_present === true && result.github_app_pk_valid === true &&
+      result.broker_signing_key_custody === "verified" && result.ledger_emission_authority === "verified";
+    if (!ok) throw new ControlPlaneError("Custody verification did not satisfy strict closure gate");
+  }
+  emit(result, Boolean(argv.json));
+}
+
+export function registerControlPlaneCommands(cli: any): void {
   cli.command(
     "cap",
     "Opaque ChittyConnect capability operations",
