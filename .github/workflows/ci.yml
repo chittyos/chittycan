@@ -26,6 +26,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Enforce canonical control-plane CLI surface
+        run: npm run check:control-plane-cli
+
       - name: Test
         run: npm test
         # Hook-style GIT_* pointing at a repo that does not exist. The suite
