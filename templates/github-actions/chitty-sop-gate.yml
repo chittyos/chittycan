@@ -1,0 +1,52 @@
+name: ChittyOS SOP & P-L-T-E-A Gate
+
+on:
+  pull_request:
+    paths:
+      - "02_System_Instructions/**"
+      - "01_Provider_Configs/**"
+      - "Manifest_Registry.json"
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  pltea-and-projection-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install canonical ChittyOS CLI
+        run: npm install --global chittycan
+
+      - name: Validate ephemeral GitHub OIDC identity
+        run: chittycan auth login --oidc --endpoint https://connect.chitty.cc --json
+
+      - name: Validate P-L-T-E-A frontmatter and epistemic gate
+        run: |
+          chittycan canon validate "02_System_Instructions/*.md" \
+            --strict-pltea \
+            --forbid-static-entities \
+            --require-workflow-gate "Read -> Analyze -> Draft -> Approve -> Write"
+
+      - name: Resolve Canon graph and lock snapshot
+        run: |
+          chittycan canon resolve \
+            --from-frontmatter "02_System_Instructions/*.md" \
+            --fail-on-unresolved \
+            --fail-on-conflict \
+            --json > canon-snapshot.json
+          jq -r '.graph_snapshot_sha256' canon-snapshot.json
+
+      - name: Emit governed trace report
+        run: |
+          chittycan pr trace \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --snapshot canon-snapshot.json

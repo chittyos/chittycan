@@ -1,10 +1,11 @@
 {
   "name": "chittycan",
   "version": "0.6.8",
-  "description": "ChittyCan CLI and infrastructure interface — AI gateway, ecosystem tooling, DNA ownership",
+  "description": "ChittyCan CLI and infrastructure interface \u2014 AI gateway, ecosystem tooling, DNA ownership",
   "type": "module",
   "bin": {
-    "can": "dist/index.js"
+    "can": "dist/index.js",
+    "chittycan": "dist/index.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -21,7 +22,7 @@
     "dev": "tsc -p . --watch",
     "mcp": "node dist/mcp-server.js",
     "prepublishOnly": "npm run build && npm run test",
-    "postinstall": "node -e \"console.log('\\\\n✓ ChittyCan installed! Run: can config\\\\n')\"",
+    "postinstall": "node -e \"console.log('\\\\n\u2713 ChittyCan installed! Run: can config\\\\n')\"",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
@@ -67,6 +68,7 @@
     "fs-extra": "^11.4.0",
     "inquirer": "^14.1.0",
     "ora": "^9.4.1",
+    "yaml": "^2.9.1",
     "yargs": "^18.2.0"
   },
   "devDependencies": {

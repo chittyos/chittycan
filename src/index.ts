@@ -11,10 +11,11 @@ import yargs from "yargs";
 import chalk from "chalk";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { trackCommandUsage } from "./lib/usage-tracker.js";
 import { hideBin } from "yargs/helpers";
 import { configMenu } from "./commands/config.js";
+import { registerControlPlaneCommands, configDriftCheck, configReconcile } from "./commands/control-plane.js";
 import { open, listRemotes } from "./commands/open.js";
 import { nudgeNow, nudgeQuiet } from "./commands/nudge.js";
 import { checkpoint, listCheckpoints } from "./commands/checkpoint.js";
@@ -118,22 +119,60 @@ const firstArg = args[0];
 const { CLI_CONFIGS } = await import("./commands/chitty.js");
 
 // If first arg is a supported CLI, auto-route to chitty handler
-if (firstArg && firstArg in CLI_CONFIGS) {
+const governedGitSubcommands = new Set(["stage-pr"]);
+if (firstArg && firstArg in CLI_CONFIGS && !(firstArg === "git" && governedGitSubcommands.has(args[1] ?? ""))) {
   // This is a direct CLI command like "can gh clone repo"
   // Route to chitty handler automatically
   await chittyCommand(args);
   process.exit(0);
 }
 
+const invokedName = basename(process.argv[1] ?? "can");
 const cli = yargs(args)
-  .scriptName("can")
+  .scriptName(invokedName === "chittycan" ? "chittycan" : "can")
   .usage("$0 <command> [options]")
   .command(
     "config",
-    "Interactive configuration menu (rclone-style)",
-    () => {},
-    async () => {
-      await configMenu(pluginLoader);
+    "Interactive configuration and governed projection operations",
+    (yargs) => yargs
+      .command(
+        "drift-check",
+        "Check governed Drive/Git projection drift",
+        (yy) => yy
+          .option("endpoint", { type: "string", default: "https://config.chitty.cc" })
+          .option("folder-id", { type: "string", demandOption: true })
+          .option("json", { type: "boolean", default: false }),
+        async (argv) => {
+          const result = await configDriftCheck({
+            endpoint: argv.endpoint as string,
+            folderId: argv.folderId as string,
+          });
+          console.log(JSON.stringify(result, null, argv.json ? 2 : 0));
+        },
+      )
+      .command(
+        "reconcile",
+        "Reconcile governed Drive/Git projections",
+        (yy) => yy
+          .option("endpoint", { type: "string", default: "https://config.chitty.cc" })
+          .option("from-drive", { type: "boolean", default: false })
+          .option("from-git", { type: "boolean", default: false })
+          .option("sha", { type: "string" })
+          .option("approval", { type: "string" })
+          .option("json", { type: "boolean", default: false }),
+        async (argv) => {
+          const result = await configReconcile({
+            endpoint: argv.endpoint as string,
+            fromDrive: Boolean(argv.fromDrive),
+            fromGit: Boolean(argv.fromGit),
+            sha: argv.sha as string | undefined,
+            approval: argv.approval as string | undefined,
+          });
+          console.log(JSON.stringify(result, null, argv.json ? 2 : 0));
+        },
+      ),
+    async (argv) => {
+      if ((argv._ as unknown[]).length <= 1) await configMenu(pluginLoader);
     }
   )
   .command(
@@ -1253,6 +1292,8 @@ const cli = yargs(args)
   })
   .demandCommand(1, "You must provide a command")
   ;
+
+registerControlPlaneCommands(cli);
 
 // Plugin commands must be registered BEFORE .strict(), which rejects anything unknown.
 // loadAll() populated the loader above; without this call getAllCommands() was never
