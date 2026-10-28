@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { decodeJwtClaims } from "../src/lib/control-plane.js";
-import { validatePlteaFiles } from "../src/commands/control-plane.js";
+import { introspectCapability, validatePlteaFiles } from "../src/commands/control-plane.js";
 
 function b64url(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -35,5 +35,51 @@ describe("strict P/L/T/E/A frontmatter validation", () => {
     const result = validatePlteaFiles([file]);
     expect(result.valid).toBe(false);
     expect(result.files[0].violations.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+
+describe("authoritative capability introspection", () => {
+  it("sends expected scope to ChittyConnect instead of re-implementing it locally", async () => {
+    const original = globalThis.fetch;
+    process.env.CHITTY_AUTH_TOKEN = "test-control-plane-token";
+    let body: any = null;
+
+    globalThis.fetch = (async (_input: any, init?: RequestInit) => {
+      body = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({
+        active: true,
+        scope: {
+          operation: "read",
+          repo_path: "/repo",
+          remote: null,
+          ref: null,
+        },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    try {
+      await introspectCapability({
+        token: "cap_opaque",
+        endpoint: "https://connect.chitty.cc",
+        op: "read",
+        repoPath: "/repo",
+        remote: "origin",
+        ref: "refs/heads/test",
+      });
+      expect(body).toEqual({
+        token: "cap_opaque",
+        operation: "read",
+        repo_path: "/repo",
+        remote: "origin",
+        ref: "refs/heads/test",
+      });
+    } finally {
+      globalThis.fetch = original;
+      delete process.env.CHITTY_AUTH_TOKEN;
+    }
   });
 });
