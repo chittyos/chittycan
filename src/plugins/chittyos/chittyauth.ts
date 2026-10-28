@@ -5,6 +5,7 @@
 
 import type { ChittyPlugin } from "../../lib/plugin.js";
 import type { Config } from "../../lib/config.js";
+import { authLoginOidcCommand, authVerifyCustodyCommand } from "../../commands/control-plane.js";
 
 export interface ChittyAuthRemote {
   type: "chittyauth";
@@ -223,6 +224,26 @@ const ChittyAuthPlugin: ChittyPlugin = {
   ],
 
   commands: [
+    {
+      name: "auth login",
+      description: "Validate an ephemeral GitHub Actions OIDC identity without persisting the JWT",
+      handler: authLoginOidcCommand,
+      options: {
+        oidc: { type: "boolean", default: false, description: "Use GitHub Actions OIDC" },
+        endpoint: { type: "string", default: "https://connect.chitty.cc", description: "ChittyConnect audience/endpoint" },
+        json: { type: "boolean", default: false, description: "Emit JSON" },
+      },
+    },
+    {
+      name: "auth verify-custody",
+      description: "Verify broker runtime custody and ledger authority",
+      handler: authVerifyCustodyCommand,
+      options: {
+        endpoint: { type: "string", default: "https://connect.chitty.cc", description: "ChittyConnect endpoint" },
+        strict: { type: "boolean", default: false, description: "Fail unless every custody gate is verified" },
+        json: { type: "boolean", default: false, description: "Emit JSON" },
+      },
+    },
     {
       name: "auth register",
       description: "Register new user and get API token",

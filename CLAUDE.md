@@ -73,6 +73,12 @@ handler)`, and some as yargs command modules (`src/commands/viewport.ts` exports
 | `can sync setup/run/status` | Notion <-> GitHub sync |
 | `can mcp list/start/stop/status/tools/test` | MCP server management |
 | `can connect setup/status/token` | ChittyConnect integration hub |
+| `chittycan auth login/verify-custody` | Ephemeral OIDC identity and custody verification |
+| `chittycan cap mint/introspect` | Opaque operation-scoped ChittyConnect capabilities |
+| `chittycan canon validate/resolve` | P/L/T/E/A validation and Canon graph resolution |
+| `chittycan pr trace/approve/hold` | Governed PR gate operations |
+| `chittycan config drift-check/reconcile` | Drive/Git projection drift and reconciliation |
+| `chittycan git stage-pr` | Governed Git write transaction (fails closed until #789 write projection lands) |
 | `can dna export/import/status/history/restore/revoke` | DNA ownership and portability (PDX format) |
 | `can dna session create/validate/inspect/end/list` | Session DNA governance |
 | `can checkpoint [message]` | Save project checkpoint |
