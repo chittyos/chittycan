@@ -108,6 +108,31 @@ async function mintCapability(argv: any): Promise<any> {
   });
 }
 
+export async function introspectCapability(argv: any): Promise<any> {
+  const token = String(argv.token ?? "");
+  if (!token.startsWith("cap_")) {
+    throw new ControlPlaneError("Only opaque cap_* capability references are accepted");
+  }
+  const repoPath = argv.repoPath ?? argv.repo;
+  const result = await controlPlaneRequest<any>("/api/v1/capabilities/introspect", {
+    endpoint: argv.endpoint as string,
+    method: "POST",
+    body: {
+      token,
+      ...(argv.op ? { operation: argv.op } : {}),
+      ...(repoPath ? { repo_path: repoPath } : {}),
+      ...(argv.remote ? { remote: argv.remote } : {}),
+      ...(argv.ref ? { ref: argv.ref } : {}),
+    },
+  });
+  if (!result.active) {
+    throw new ControlPlaneError(
+      `Capability is inactive${result.reason ? `: ${result.reason}` : ""}`,
+    );
+  }
+  return result;
+}
+
 export async function configDriftCheck(options: { endpoint?: string; folderId: string }): Promise<any> {
   return controlPlaneRequest<any>("/api/v1/config/drift-check", {
     endpoint: options.endpoint ?? DEFAULT_CONFIG_URL,
@@ -202,20 +227,10 @@ export function registerControlPlaneCommands(cli: any): void {
         .option("op", { choices: ["read", "commit", "tag", "push"] as const })
         .option("repo-path", { type: "string" })
         .option("repo", { type: "string" })
+        .option("remote", { type: "string" })
         .option("ref", { type: "string" })
         .option("json", { type: "boolean", default: false }), async (argv: any) => {
-          const token = String(argv.token);
-          if (!token.startsWith("cap_")) throw new ControlPlaneError("Only opaque cap_* capability references are accepted");
-          const result = await controlPlaneRequest<any>("/api/v1/capabilities/introspect", {
-            endpoint: argv.endpoint as string,
-            method: "POST",
-            body: { token },
-          });
-          if (!result.active) throw new ControlPlaneError("Capability is inactive");
-          const repoPath = argv.repoPath ?? argv.repo;
-          if (argv.op && result.scope?.operation !== argv.op) throw new ControlPlaneError(`Capability operation mismatch: expected ${argv.op}`);
-          if (repoPath && result.scope?.repo_path !== repoPath) throw new ControlPlaneError(`Capability repo mismatch: expected ${repoPath}`);
-          if (argv.ref && result.scope?.ref !== argv.ref) throw new ControlPlaneError(`Capability ref mismatch: expected ${argv.ref}`);
+          const result = await introspectCapability(argv);
           emit(result, Boolean(argv.json));
         })
       .demandCommand(1),

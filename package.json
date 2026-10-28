@@ -1,7 +1,7 @@
 {
   "name": "chittycan",
   "version": "0.6.8",
-  "description": "ChittyCan CLI and infrastructure interface \u2014 AI gateway, ecosystem tooling, DNA ownership",
+  "description": "ChittyCan CLI and infrastructure interface — AI gateway, ecosystem tooling, DNA ownership",
   "type": "module",
   "bin": {
     "can": "dist/index.js",
@@ -21,8 +21,8 @@
     "copy:assets": "node -e \"const fs=require('fs');fs.mkdirSync('dist/zsh',{recursive:true});fs.copyFileSync('src/zsh/snippets.zsh','dist/zsh/snippets.zsh')\"",
     "dev": "tsc -p . --watch",
     "mcp": "node dist/mcp-server.js",
-    "prepublishOnly": "npm run build && npm run test",
-    "postinstall": "node -e \"console.log('\\\\n\u2713 ChittyCan installed! Run: can config\\\\n')\"",
+    "prepublishOnly": "npm run build && npm run check:control-plane-cli && npm run test",
+    "postinstall": "node -e \"console.log('\\\\n✓ ChittyCan installed! Run: can config\\\\n')\"",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
@@ -30,7 +30,8 @@
     "test:coverage": "vitest run --coverage",
     "coverage": "npm run test:coverage",
     "changeset": "changeset",
-    "version-packages": "changeset version"
+    "version-packages": "changeset version",
+    "check:control-plane-cli": "node scripts/check-no-raw-control-plane-http.mjs"
   },
   "keywords": [
     "chittycan",
